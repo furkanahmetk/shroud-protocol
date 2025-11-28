@@ -1,0 +1,15 @@
+[package]
+name = "shroud-protocol"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+casper-contract = "3.0.0"
+casper-types = "3.0.0"
+# Note: In a real environment we would need a compatible Groth16 library for WASM
+# For this MVP/Hackathon we will mock the verifier if a compatible crate isn't readily available for no_std/wasm
+# or use a simplified implementation.
+hex = "0.4"
+
+[lib]
+crate-type = ["cdylib"]

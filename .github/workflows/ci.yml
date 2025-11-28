@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-contracts:
+    name: Build Contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: wasm32-unknown-unknown
+          override: true
+          
+      - name: Build Contracts
+        run: |
+          cd contracts
+          cargo build --release --target wasm32-unknown-unknown
+
+  build-circuits:
+    name: Build Circuits
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          
+      - name: Install Circom
+        run: |
+          git clone https://github.com/iden3/circom.git
+          cd circom
+          cargo build --release
+          sudo install target/release/circom /usr/local/bin/circom
+          
+      - name: Compile Circuits
+        run: |
+          cd circuits
+          circom withdraw.circom --r1cs --wasm --sym
+
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          
+      - name: Install Dependencies
+        run: |
+          cd frontend
+          npm ci
+          
+      - name: Build
+        run: |
+          cd frontend
+          npm run build
+
+  build-cli:
+    name: Build CLI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          
+      - name: Install Dependencies
+        run: |
+          cd cli
+          npm ci
+          
+      - name: Build
+        run: |
+          cd cli
+          npm run build
