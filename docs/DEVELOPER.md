@@ -12,8 +12,13 @@ Shroud Protocol consists of:
 ### Circuits
 
 ```bash
+# Install Circom (if not already installed)
+cargo install --git https://github.com/iden3/circom.git
+
 cd circuits
-circom withdraw.circom --r1cs --wasm --sym
+circom withdraw.circom --r1cs --wasm --sym --c
+# Note: Trusted setup steps below require snarkjs
+# npm install -g snarkjs
 snarkjs groth16 setup withdraw.r1cs pot12_final.ptau withdraw_0000.zkey
 snarkjs zkey contribute withdraw_0000.zkey withdraw_final.zkey --name="Dev" -v
 snarkjs zkey export verificationkey withdraw_final.zkey verification_key.json
@@ -21,9 +26,14 @@ snarkjs zkey export verificationkey withdraw_final.zkey verification_key.json
 
 ### Contracts
 
+Using Odra framework:
+
 ```bash
 cd contracts
-cargo build --release --target wasm32-unknown-unknown
+# Build for WASM
+cargo odra build
+# Run tests
+cargo odra test
 ```
 
 ### CLI
@@ -37,7 +47,11 @@ npm run build
 
 ### Unit Tests
 
-- **Contracts**: `cd contracts && cargo test`
+- **Contracts**: `cd contracts && cargo odra test`
+  > **Note**: Tests are currently disabled in `src/lib.rs` to ensure stable builds in environments without `cargo-odra`. To run them:
+  > 1. Install `cargo-odra`: `cargo install cargo-odra`
+  > 2. Uncomment `mod tests;` in `src/lib.rs`
+  > 3. Run `cargo odra test`
 - **Circuits**: `cd circuits && npm test` (requires mocha/chai setup)
 
 ### Integration Tests

@@ -47,3 +47,6 @@ logs/
 
 # Casper
 casper_keys/
+
+# Git automation file
+.github/workflows/ci.yml

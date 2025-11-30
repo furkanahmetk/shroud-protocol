@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
 import { ArrowDownCircle, Copy, Check } from 'lucide-react';
+import { CryptoUtils } from '../utils/crypto';
+import { createDepositDeploy, sendSignedDeploy } from '../utils/casper';
+import { useWallet } from '../hooks/useWallet';
 
 interface DepositProps {
     isConnected: boolean;
@@ -11,17 +14,44 @@ export default function Deposit({ isConnected, activeKey }: DepositProps) {
     const [isProcessing, setIsProcessing] = useState(false);
     const [secret, setSecret] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
+    const { signDeploy } = useWallet();
 
     const handleDeposit = async () => {
         if (!isConnected || !activeKey) return;
         setIsProcessing(true);
 
-        // Simulate deposit process
-        setTimeout(() => {
-            const mockSecret = "shroud-secret-" + Math.random().toString(36).substring(7);
-            setSecret(mockSecret);
+        try {
+            // 1. Generate Secrets
+            const crypto = new CryptoUtils();
+            await crypto.init();
+            const { nullifier, secret } = crypto.generateSecrets();
+            const commitment = crypto.computeCommitment(nullifier, secret);
+
+            // 2. Create Deploy
+            const deployJson = createDepositDeploy(activeKey, commitment, BigInt(100_000_000_000));
+
+            // 3. Sign Deploy
+            const signedDeployJson = await signDeploy(deployJson, activeKey);
+
+            // 4. Send Deploy
+            const deployHash = await sendSignedDeploy(signedDeployJson);
+            console.log("Deposit Deploy Hash:", deployHash);
+
+            // 5. Show Secret to User
+            // Format: nullifier-secret-commitment
+            const secretString = JSON.stringify({
+                nullifier: nullifier.toString(),
+                secret: secret.toString(),
+                commitment: commitment.toString()
+            });
+            setSecret(secretString);
+
+        } catch (e) {
+            console.error("Deposit failed:", e);
+            alert("Deposit failed. See console for details.");
+        } finally {
             setIsProcessing(false);
-        }, 2000);
+        }
     };
 
     const copyToClipboard = () => {
@@ -34,42 +64,46 @@ export default function Deposit({ isConnected, activeKey }: DepositProps) {
 
     return (
         <div className="space-y-6">
-            <div className="bg-black/30 p-4 rounded-xl border border-gray-800">
+            <div className="bg-gray-50 p-6 rounded-2xl border border-gray-200">
                 <div className="flex justify-between mb-2">
-                    <span className="text-gray-400">Amount to Deposit</span>
-                    <span className="text-white font-mono">Balance: 1,250 CSPR</span>
+                    <span className="text-gray-500 text-sm font-medium">Amount to Deposit</span>
+                    <span className="text-brand-600 font-mono text-sm font-medium">Balance: 1,250 CSPR</span>
                 </div>
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-3">
                     <input
                         type="text"
                         value={amount}
                         readOnly
-                        className="bg-transparent text-3xl font-bold w-full focus:outline-none text-white"
+                        className="bg-transparent text-4xl font-bold w-full focus:outline-none text-gray-900 font-mono tracking-tight"
                     />
-                    <span className="text-xl font-bold text-shroud-accent">CSPR</span>
+                    <span className="text-xl font-bold text-brand-600 bg-brand-50 px-3 py-1 rounded-lg border border-brand-100">CSPR</span>
                 </div>
             </div>
 
             {secret ? (
-                <div className="bg-yellow-900/20 border border-yellow-700/50 p-4 rounded-xl space-y-3">
-                    <h3 className="text-yellow-500 font-bold flex items-center">
-                        ⚠️ Save Your Secret!
-                    </h3>
-                    <p className="text-sm text-yellow-200/70">
-                        You need this secret key to withdraw your funds later. If you lose it, your funds are lost forever.
+                <div className="bg-yellow-50 border border-yellow-200 p-6 rounded-2xl space-y-4 animate-fade-in">
+                    <div className="flex items-center space-x-3">
+                        <div className="p-2 bg-yellow-100 rounded-lg">
+                            <span className="text-xl">⚠️</span>
+                        </div>
+                        <h3 className="text-yellow-800 font-bold text-lg">Save Your Secret!</h3>
+                    </div>
+                    <p className="text-sm text-yellow-700 leading-relaxed">
+                        You need this secret key to withdraw your funds later. <br />
+                        <span className="font-bold text-yellow-800">If you lose it, your funds are lost forever.</span>
                     </p>
-                    <div className="flex items-center space-x-2 bg-black/50 p-3 rounded-lg">
-                        <code className="flex-1 font-mono text-sm break-all text-white">{secret}</code>
+                    <div className="flex items-center space-x-2 bg-white p-4 rounded-xl border border-gray-200 shadow-sm group hover:border-brand-300 transition-colors">
+                        <code className="flex-1 font-mono text-xs break-all text-gray-600 group-hover:text-gray-900 transition-colors">{secret}</code>
                         <button
                             onClick={copyToClipboard}
-                            className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                            className="p-2.5 hover:bg-gray-100 rounded-lg transition-all active:scale-95"
                         >
                             {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4 text-gray-400" />}
                         </button>
                     </div>
                     <button
                         onClick={() => setSecret(null)}
-                        className="w-full py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm font-medium transition-colors"
+                        className="w-full py-3 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium transition-all text-gray-600 hover:text-gray-900 shadow-sm"
                     >
                         I have saved my secret
                     </button>
@@ -78,22 +112,25 @@ export default function Deposit({ isConnected, activeKey }: DepositProps) {
                 <button
                     onClick={handleDeposit}
                     disabled={isProcessing || !isConnected}
-                    className="w-full py-4 bg-white text-black font-bold rounded-xl hover:bg-gray-200 transition-all transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center"
+                    className="w-full py-4 bg-brand-500 text-white font-bold rounded-xl hover:bg-brand-600 shadow-md hover:shadow-lg transition-all transform hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex justify-center items-center group"
                 >
                     {isProcessing ? (
-                        <span className="animate-pulse">Processing...</span>
+                        <span className="animate-pulse flex items-center">
+                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2"></div>
+                            Processing...
+                        </span>
                     ) : !isConnected ? (
                         <span>Connect Wallet to Deposit</span>
                     ) : (
                         <>
-                            <ArrowDownCircle className="w-5 h-5 mr-2" />
+                            <ArrowDownCircle className="w-5 h-5 mr-2 group-hover:animate-bounce" />
                             Deposit 100 CSPR
                         </>
                     )}
                 </button>
             )}
 
-            <div className="text-xs text-center text-gray-500">
+            <div className="text-xs text-center text-gray-400 font-medium">
                 + 1.5 CSPR network fee
             </div>
         </div>

@@ -19,11 +19,13 @@ export class CryptoUtils {
     }
 
     computeCommitment(nullifier: bigint, secret: bigint): bigint {
-        return this.mimc.multiHash([nullifier, secret]);
+        const res = this.mimc.multiHash([nullifier, secret]);
+        return this.mimc.F.toObject(res);
     }
 
     computeNullifierHash(nullifier: bigint): bigint {
-        return this.mimc.hash(nullifier);
+        const res = this.mimc.multiHash([nullifier]);
+        return this.mimc.F.toObject(res);
     }
 
     async saveSecrets(

@@ -1,60 +1,102 @@
 # Shroud Protocol
 
-Shroud Protocol is a privacy mixer for the Casper Network, enabling users to break the on-chain link between deposits and withdrawals using Zero-Knowledge Proofs (Groth16).
+Shroud Protocol is a privacy-preserving mixer built on the Casper Network. It allows users to deposit CSPR into a smart contract and withdraw it later to a different address, effectively breaking the on-chain link between the depositor and the recipient. This is achieved using Zero-Knowledge Proofs (ZK-SNARKs) powered by Groth16 and MiMC hashing.
 
-## Features
+## 🌟 Features
 
-- **Deposit**: Deposit 100 CSPR into the mixer.
-- **Withdraw**: Withdraw 100 CSPR to a fresh address using a ZK proof.
-- **Privacy**: Uses MiMC hash and Merkle Trees to ensure anonymity.
-- **CLI**: Command-line interface for easy interaction.
-- **Web App**: Modern React/Next.js interface.
+- **Privacy**: Uses ZK-SNARKs (Groth16) to prove ownership of funds without revealing the deposit source.
+- **Security**: Implements the MiMC7 hash function for efficient and secure in-circuit hashing.
+- **Non-Custodial**: Users maintain full control of their funds via a secret key.
+- **User-Friendly**: Includes a modern Web App and a CLI for advanced users.
+- **Developer-Ready**: Built with the Odra framework for robust smart contract development.
 
-## Project Structure
+## 🏗️ Architecture
 
-- `contracts/`: Rust smart contracts for Casper Network.
-- `circuits/`: Circom circuits for ZK proofs.
-- `cli/`: TypeScript CLI tool.
-- `frontend/`: Next.js web application.
-- `scripts/`: Utility scripts.
+The protocol consists of three main components:
+
+```mermaid
+graph TD
+    User[User] -->|Deposit| Frontend
+    User -->|Withdraw| Frontend
+    Frontend -->|Interacts| Contract[Smart Contract (Odra)]
+    Frontend -->|Generates Proof| Circuits[ZK Circuits (Circom)]
+    Contract -->|Verifies Proof| Verifier[Groth16 Verifier]
+    Contract -->|Manages| MerkleTree[Merkle Tree]
+```
+
+- **Smart Contracts (`contracts/`)**: Written in Rust using the Odra framework. Handles deposits, manages the Merkle Tree state, and verifies ZK proofs to authorize withdrawals.
+- **Circuits (`circuits/`)**: Written in Circom. Defines the constraints for the ZK proof, ensuring that the user knows the secret corresponding to a valid leaf in the Merkle Tree.
+- **Frontend (`frontend/`)**: A Next.js web application that manages the user's wallet connection, generates secrets, computes ZK proofs in the browser using `snarkjs`, and submits transactions.
+- **CLI (`cli/`)**: A TypeScript-based command-line tool for automated interactions and testing.
+
+## 📂 Project Structure
+
+- `contracts/`: Rust smart contracts (Odra).
+- `circuits/`: Circom circuits and trusted setup scripts.
+- `cli/`: TypeScript CLI for interacting with the protocol.
+- `frontend/`: Next.js web interface.
+- `scripts/`: Automation scripts for building, testing, and setup.
+- `docs/`: Detailed developer documentation.
 
 ## Getting Started
 
-### Prerequisites
+### 📦 Dependencies
 
-Before you begin, ensure you have the following tools installed:
+We provide a script to install all necessary dependencies (Rust, Odra, Casper Client, npm packages).
 
-1.  **Node.js & npm** (v18+)
-    -   Download: [https://nodejs.org/](https://nodejs.org/)
-    -   Verify: `node -v` and `npm -v`
+1.  **Run the installation script**:
+    ```bash
+    ./scripts/install_dependencies.sh
+    ```
 
-2.  **Rust & Cargo** (v1.70+)
-    -   Install (Linux/macOS): `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
-    -   Install (Windows): Download `rustup-init.exe` from [https://rustup.rs/](https://rustup.rs/)
-    -   Add WASM target: `rustup target add wasm32-unknown-unknown`
-    -   Verify: `rustc --version` and `cargo --version`
+**Manual Installation Details:**
 
-3.  **Circom** (v2.0+)
-    -   Install Rust first.
-    -   Clone: `git clone https://github.com/iden3/circom.git`
-    -   Build: `cd circom && cargo build --release`
-    -   Install: `cargo install --path circom`
-    -   Verify: `circom --version`
+| Tool | Version | Purpose |
+| :--- | :--- | :--- |
+| **Node.js** | v18+ | Runtime for CLI and Frontend |
+| **Rust** | v1.70+ | Language for Smart Contracts |
+| **Cargo Odra** | Latest | Framework for Casper Contracts |
+| **Casper Client**| Latest | Tool for interacting with Casper Network |
+| **Circom** | v2.0+ | Compiler for ZK Circuits |
+| **SnarkJS** | v0.7.0+ | ZK Proof generation and verification |
 
-4.  **Casper Client**
-    -   Install: `cargo install casper-client`
-    -   Verify: `casper-client --version`
+### 🚀 Quick Start (Automated)
 
-### Installation
+We provide scripts to automate the build and setup process.
 
-1. Clone the repository.
-2. Install dependencies:
-   ```bash
-   cd cli && npm install
-   cd ../frontend && npm install
-   ```
+1.  **Build Everything**:
+    ```bash
+    ./scripts/build_all.sh
+    ```
+2.  **Run Tests**:
+    ```bash
+    ./scripts/test_all.sh
+    ```
+3.  **Setup Circuits (Trusted Setup)**:
+    ```bash
+    ./scripts/setup_circuits.sh
+    ```
 
-### Usage
+### 🛠️ Manual Installation
+
+If you prefer to install components manually:
+
+1.  **Clone the repository**:
+    ```bash
+    git clone https://github.com/yourusername/shroud-protocol.git
+    cd shroud-protocol
+    ```
+
+2.  **Install Dependencies**:
+    ```bash
+    # CLI
+    cd cli && npm install && cd ..
+    
+    # Frontend
+    cd frontend && npm install && cd ..
+    ```
+
+## 📖 Usage
 
 #### 1. Frontend (Recommended)
 
@@ -68,6 +110,7 @@ The easiest way to use Shroud Protocol is via the web interface.
 1.  **Start the App**:
     ```bash
     cd frontend
+    npm install
     npm run dev
     ```
 2.  **Connect Wallet**:
@@ -78,17 +121,19 @@ The easiest way to use Shroud Protocol is via the web interface.
     - Go to the **Deposit** tab.
     - Click **"Deposit 100 CSPR"**.
     - Sign the transaction in your wallet.
-    - **IMPORTANT**: Save the "Secret Key" displayed. You need this to withdraw!
+    - **IMPORTANT**: The app will display your **Secret Key** (JSON format). Copy and save it securely! You need this to withdraw.
 4.  **Withdraw**:
     - Go to the **Withdraw** tab.
-    - Enter your **Secret Key**.
+    - Paste your **Secret Key JSON** into the text area.
     - Enter the **Recipient Address** (a fresh address for privacy).
     - Click **"Withdraw"**.
-    - The ZK proof will be generated and the transaction submitted.
+    - The app will generate a Zero-Knowledge Proof (this may take a few seconds) and submit the transaction.
 
 #### 2. CLI (Advanced)
 
 For developers or automated scripts.
+
+See [USAGE.md](./USAGE.md) for detailed scenarios and examples.
 
 **Setup:**
 ```bash

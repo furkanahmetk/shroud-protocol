@@ -3,13 +3,21 @@ name = "shroud-protocol"
 version = "0.1.0"
 edition = "2021"
 
-[dependencies]
-casper-contract = "3.0.0"
-casper-types = "3.0.0"
-# Note: In a real environment we would need a compatible Groth16 library for WASM
-# For this MVP/Hackathon we will mock the verifier if a compatible crate isn't readily available for no_std/wasm
-# or use a simplified implementation.
-hex = "0.4"
-
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+odra = "0.9.0"
+casper-types = "3.0.0"
+hex = { version = "0.4", default-features = false, features = ["alloc"] }
+# We might need these for crypto if not fully provided by Odra/Casper natively in the way we need
+ark-bn254 = { version = "0.4.0", default-features = false, features = ["curve"] }
+ark-ff = { version = "0.4.0", default-features = false }
+ark-groth16 = { version = "0.4.0", default-features = false }
+ark-serialize = { version = "0.4.0", default-features = false }
+ark-std = { version = "0.4.0", default-features = false }
+
+[features]
+default = []
+
+

@@ -17,6 +17,7 @@ export const useWallet = () => {
         const checkConnection = async () => {
             // @ts-ignore
             const provider = window.CasperWalletProvider;
+
             if (provider) {
                 try {
                     const isConnected = await provider.isConnected();
@@ -34,9 +35,36 @@ export const useWallet = () => {
             }
         };
 
+        // Initial check
         checkConnection();
-        // Listen for events if supported by the provider
-        // window.addEventListener('casper-wallet:activeKeyChanged', ...);
+
+        // Poll for provider (common fix for injection latency)
+        const interval = setInterval(checkConnection, 1000);
+
+        // Listen for events
+        const handleActiveKeyChanged = (event: any) => {
+            console.log("Active key changed:", event.detail);
+            checkConnection();
+        };
+
+        const handleDisconnected = () => {
+            setWalletState(prev => ({ ...prev, isConnected: false, activeKey: null }));
+        };
+
+        const handleConnected = () => {
+            checkConnection();
+        };
+
+        window.addEventListener('casper-wallet:activeKeyChanged', handleActiveKeyChanged);
+        window.addEventListener('casper-wallet:disconnected', handleDisconnected);
+        window.addEventListener('casper-wallet:connected', handleConnected);
+
+        return () => {
+            clearInterval(interval);
+            window.removeEventListener('casper-wallet:activeKeyChanged', handleActiveKeyChanged);
+            window.removeEventListener('casper-wallet:disconnected', handleDisconnected);
+            window.removeEventListener('casper-wallet:connected', handleConnected);
+        };
     }, []);
 
     const connect = async () => {

@@ -13,7 +13,7 @@ template MerkleTreeChecker(levels) {
     hashes[0] <== leaf;
 
     for (var i = 0; i < levels; i++) {
-        hashers[i] = MiMCSponge(2, 1);
+        hashers[i] = MultiMiMC7(2, 91);
         hashers[i].k <== 0;
 
         // If pathIndices[i] == 0, leaf is on left
@@ -26,10 +26,10 @@ template MerkleTreeChecker(levels) {
         // left = hashes[i] - pathIndices[i] * (hashes[i] - pathElements[i])
         // right = pathElements[i] - pathIndices[i] * (pathElements[i] - hashes[i])
 
-        hashers[i].ins[0] <== hashes[i] - pathIndices[i] * (hashes[i] - pathElements[i]);
-        hashers[i].ins[1] <== pathElements[i] - pathIndices[i] * (pathElements[i] - hashes[i]);
+        hashers[i].in[0] <== hashes[i] - pathIndices[i] * (hashes[i] - pathElements[i]);
+        hashers[i].in[1] <== pathElements[i] - pathIndices[i] * (pathElements[i] - hashes[i]);
 
-        hashes[i + 1] <== hashers[i].outs[0];
+        hashes[i + 1] <== hashers[i].out;
     }
 
     root <== hashes[levels];

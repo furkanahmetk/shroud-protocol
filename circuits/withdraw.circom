@@ -33,10 +33,10 @@ template Withdraw(levels) {
     tree.root === root;
 
     // Compute nullifier hash
-    component nullifierHasher = MiMCSponge(1, 1);
-    nullifierHasher.ins[0] <== nullifier;
+    component nullifierHasher = MultiMiMC7(1, 91);
+    nullifierHasher.in[0] <== nullifier;
     nullifierHasher.k <== 0;
-    nullifierHasher.outs[0] === nullifierHash;
+    nullifierHasher.out === nullifierHash;
 
     // Add hidden signals to prevent tampering with recipient, relayer, fee
     // We square them to ensure they are included in the constraints

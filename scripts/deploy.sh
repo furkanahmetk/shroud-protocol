@@ -31,7 +31,7 @@ casper-client put-deploy \
     --chain-name "$CHAIN_NAME" \
     --secret-key "$SECRET_KEY_PATH" \
     --payment-amount 150000000000 \
-    --session-path "contracts/target/wasm32-unknown-unknown/release/contract.wasm"
+    --session-path "contracts/wasm/shroud_protocol.wasm"
 
 echo "⏳ Waiting for deployment..."
 # In a real script, we would query the node to get the deploy status and contract hash

@@ -1,4 +1,4 @@
-use casper_types::{U256, bytesrepr::{self, ToBytes, FromBytes}};
+use casper_types::{CLTyped, CLType, U256, bytesrepr::{self, ToBytes, FromBytes}};
 use alloc::vec::Vec;
 use alloc::vec;
 
@@ -12,6 +12,7 @@ pub struct MerkleTree {
     pub next_index: u32,
     pub filled_subtrees: Vec<U256>,
     pub roots: Vec<U256>,
+    pub nodes: Vec<[u8; 32]>,
 }
 
 impl MerkleTree {
@@ -76,6 +77,14 @@ impl MerkleTree {
         left + right 
     }
 }
+
+impl CLTyped for MerkleTree {
+    fn cl_type() -> CLType {
+        CLType::Any
+    }
+}
+
+
 
 impl ToBytes for MerkleTree {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
