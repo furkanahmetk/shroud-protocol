@@ -3,34 +3,46 @@
 @tailwind utilities;
 
 :root {
-  --foreground-rgb: 17, 24, 39;
-  --background-start-rgb: 255, 255, 255;
-  --background-end-rgb: 249, 250, 251;
+  --foreground-rgb: 255, 255, 255;
+  --background-start-rgb: 3, 7, 18;
+  --background-end-rgb: 3, 7, 18;
 }
 
 body {
-  color: #111827;
-  background-color: #F9FAFB;
+  color: #ffffff;
+  background-color: #030712;
   background-image:
-    radial-gradient(at 0% 0%, rgba(0, 112, 243, 0.05) 0px, transparent 50%),
-    radial-gradient(at 100% 0%, rgba(2, 132, 199, 0.05) 0px, transparent 50%),
-    radial-gradient(at 100% 100%, rgba(0, 112, 243, 0.03) 0px, transparent 50%),
-    radial-gradient(at 0% 100%, rgba(2, 132, 199, 0.03) 0px, transparent 50%);
+    radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.15) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(139, 92, 246, 0.15) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(59, 130, 246, 0.1) 0px, transparent 50%);
   min-height: 100vh;
 }
 
 /* Utilities */
-.card-shadow {
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+.glass-panel {
+  background: rgba(17, 24, 39, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
 
 .glass-card {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.5);
+  background: rgba(17, 24, 39, 0.8);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.5);
 }
 
 .input-focus {
-  @apply focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none transition-all;
+  @apply focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500 outline-none transition-all duration-200;
+}
+
+.btn-primary {
+  @apply bg-gradient-to-r from-brand-600 to-brand-500 hover:from-brand-500 hover:to-brand-400 text-white font-bold transition-all duration-200 shadow-lg shadow-brand-500/20 hover:shadow-brand-500/40 active:scale-[0.98];
+}
+
+.btn-secondary {
+  @apply bg-white/5 hover:bg-white/10 text-white border border-white/10 font-medium transition-all duration-200 shadow-sm hover:shadow-lg hover:shadow-brand-500/10 active:scale-[0.98];
 }

@@ -64,46 +64,46 @@ export default function Deposit({ isConnected, activeKey }: DepositProps) {
 
     return (
         <div className="space-y-6">
-            <div className="bg-gray-50 p-6 rounded-2xl border border-gray-200">
+            <div className="bg-white/5 p-6 rounded-2xl border border-white/10">
                 <div className="flex justify-between mb-2">
-                    <span className="text-gray-500 text-sm font-medium">Amount to Deposit</span>
-                    <span className="text-brand-600 font-mono text-sm font-medium">Balance: 1,250 CSPR</span>
+                    <span className="text-gray-400 text-sm font-medium">Amount to Deposit</span>
+                    <span className="text-brand-400 font-mono text-sm font-medium">Balance: 1,250 CSPR</span>
                 </div>
                 <div className="flex items-center space-x-3">
                     <input
                         type="text"
                         value={amount}
                         readOnly
-                        className="bg-transparent text-4xl font-bold w-full focus:outline-none text-gray-900 font-mono tracking-tight"
+                        className="bg-transparent text-4xl font-bold w-full focus:outline-none text-white font-mono tracking-tight"
                     />
-                    <span className="text-xl font-bold text-brand-600 bg-brand-50 px-3 py-1 rounded-lg border border-brand-100">CSPR</span>
+                    <span className="text-xl font-bold text-brand-400 bg-brand-500/10 px-3 py-1 rounded-lg border border-brand-500/20">CSPR</span>
                 </div>
             </div>
 
             {secret ? (
-                <div className="bg-yellow-50 border border-yellow-200 p-6 rounded-2xl space-y-4 animate-fade-in">
+                <div className="bg-yellow-500/10 border border-yellow-500/20 p-6 rounded-2xl space-y-4 animate-fade-in">
                     <div className="flex items-center space-x-3">
-                        <div className="p-2 bg-yellow-100 rounded-lg">
+                        <div className="p-2 bg-yellow-500/20 rounded-lg">
                             <span className="text-xl">⚠️</span>
                         </div>
-                        <h3 className="text-yellow-800 font-bold text-lg">Save Your Secret!</h3>
+                        <h3 className="text-yellow-400 font-bold text-lg">Save Your Secret!</h3>
                     </div>
-                    <p className="text-sm text-yellow-700 leading-relaxed">
+                    <p className="text-sm text-yellow-200/80 leading-relaxed">
                         You need this secret key to withdraw your funds later. <br />
-                        <span className="font-bold text-yellow-800">If you lose it, your funds are lost forever.</span>
+                        <span className="font-bold text-yellow-400">If you lose it, your funds are lost forever.</span>
                     </p>
-                    <div className="flex items-center space-x-2 bg-white p-4 rounded-xl border border-gray-200 shadow-sm group hover:border-brand-300 transition-colors">
-                        <code className="flex-1 font-mono text-xs break-all text-gray-600 group-hover:text-gray-900 transition-colors">{secret}</code>
+                    <div className="flex items-center space-x-2 bg-black/20 p-4 rounded-xl border border-white/10 shadow-sm group hover:border-brand-500/30 transition-colors">
+                        <code className="flex-1 font-mono text-xs break-all text-gray-400 group-hover:text-gray-200 transition-colors">{secret}</code>
                         <button
                             onClick={copyToClipboard}
-                            className="p-2.5 hover:bg-gray-100 rounded-lg transition-all active:scale-95"
+                            className="p-2.5 hover:bg-white/10 rounded-lg transition-all active:scale-95"
                         >
-                            {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4 text-gray-400" />}
+                            {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4 text-gray-500" />}
                         </button>
                     </div>
                     <button
                         onClick={() => setSecret(null)}
-                        className="w-full py-3 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium transition-all text-gray-600 hover:text-gray-900 shadow-sm"
+                        className="w-full py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-medium transition-all text-gray-400 hover:text-white shadow-sm"
                     >
                         I have saved my secret
                     </button>
@@ -112,7 +112,7 @@ export default function Deposit({ isConnected, activeKey }: DepositProps) {
                 <button
                     onClick={handleDeposit}
                     disabled={isProcessing || !isConnected}
-                    className="w-full py-4 bg-brand-500 text-white font-bold rounded-xl hover:bg-brand-600 shadow-md hover:shadow-lg transition-all transform hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex justify-center items-center group"
+                    className="w-full py-4 btn-primary rounded-xl flex justify-center items-center group disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     {isProcessing ? (
                         <span className="animate-pulse flex items-center">
@@ -130,7 +130,7 @@ export default function Deposit({ isConnected, activeKey }: DepositProps) {
                 </button>
             )}
 
-            <div className="text-xs text-center text-gray-400 font-medium">
+            <div className="text-xs text-center text-gray-500 font-medium">
                 + 1.5 CSPR network fee
             </div>
         </div>

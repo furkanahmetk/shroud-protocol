@@ -89,12 +89,12 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
     if (status === 'success') {
         return (
             <div className="text-center py-12 space-y-6 animate-fade-in">
-                <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto border border-green-200 shadow-sm">
-                    <ArrowUpCircle className="w-10 h-10 text-green-600" />
+                <div className="w-20 h-20 bg-green-500/10 rounded-full flex items-center justify-center mx-auto border border-green-500/20 shadow-sm">
+                    <ArrowUpCircle className="w-10 h-10 text-green-400" />
                 </div>
                 <div className="space-y-2">
-                    <h3 className="text-3xl font-bold text-gray-900 tracking-tight">Withdrawal Submitted!</h3>
-                    <p className="text-gray-500">Transaction has been sent to the network.</p>
+                    <h3 className="text-3xl font-bold text-white tracking-tight">Withdrawal Submitted!</h3>
+                    <p className="text-gray-400">Transaction has been sent to the network.</p>
                 </div>
                 <button
                     onClick={() => {
@@ -102,7 +102,7 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
                         setSecretInput('');
                         setRecipient('');
                     }}
-                    className="mt-6 px-8 py-3 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium transition-all text-gray-700 hover:text-gray-900 shadow-sm hover:shadow-md"
+                    className="mt-6 px-8 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-medium transition-all text-gray-300 hover:text-white shadow-sm hover:shadow-md"
                 >
                     Make another withdrawal
                 </button>
@@ -113,30 +113,30 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
     return (
         <div className="space-y-6">
             <div className="space-y-3">
-                <label className="text-sm text-gray-500 font-medium ml-1">Secret Key (JSON)</label>
+                <label className="text-sm text-gray-400 font-medium ml-1">Secret Key (JSON)</label>
                 <textarea
                     value={secretInput}
                     onChange={(e) => setSecretInput(e.target.value)}
                     placeholder='Paste your secret JSON here...'
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl p-4 text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent h-32 resize-none font-mono text-xs transition-all placeholder:text-gray-400"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-white focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500 h-32 resize-none font-mono text-xs transition-all placeholder:text-gray-600"
                 />
             </div>
 
             <div className="space-y-3">
-                <label className="text-sm text-gray-500 font-medium ml-1">Recipient Address</label>
+                <label className="text-sm text-gray-400 font-medium ml-1">Recipient Address</label>
                 <input
                     type="text"
                     value={recipient}
                     onChange={(e) => setRecipient(e.target.value)}
                     placeholder="0x..."
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl p-4 text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent font-mono text-sm transition-all placeholder:text-gray-400"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-white focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500 font-mono text-sm transition-all placeholder:text-gray-600"
                 />
             </div>
 
             <button
                 onClick={handleWithdraw}
                 disabled={isProcessing || !secretInput || !recipient}
-                className="w-full py-4 bg-brand-500 text-white font-bold rounded-xl hover:bg-brand-600 shadow-md hover:shadow-lg transition-all transform hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex justify-center items-center group"
+                className="w-full py-4 btn-primary rounded-xl flex justify-center items-center group disabled:opacity-50 disabled:cursor-not-allowed"
             >
                 {status === 'proving' ? (
                     <span className="animate-pulse flex items-center">
