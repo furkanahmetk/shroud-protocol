@@ -10,7 +10,18 @@ Shroud Protocol is a privacy-preserving mixer built on the Casper Network. It al
 - **User-Friendly**: Includes a modern Web App and a CLI for advanced users.
 - **Developer-Ready**: Built with the Odra framework for robust smart contract development.
 
-## 🏗️ Architecture
+## � User Interface
+ 
+ The frontend features a **Premium Dark Theme** designed for a modern, immersive experience:
+ 
+ - **Cosmic Aesthetic**: Deep black backgrounds with rich blue/purple mesh gradients.
+ - **Glassmorphism**: Translucent cards and panels with subtle glowing borders.
+ - **Interactive Elements**: Animated buttons, glowing text, and smooth transitions.
+ 
+ ![Shroud Protocol UI](frontend/public/hero_shield_3d_1764582011240.png)
+ *(Note: The above image is the 3D asset used in the Hero section)*
+ 
+ ## �🏗️ Architecture
 
 The protocol consists of three main components:
 
@@ -26,7 +37,7 @@ graph TD
 
 - **Smart Contracts (`contracts/`)**: Written in Rust using the Odra framework. Handles deposits, manages the Merkle Tree state, and verifies ZK proofs to authorize withdrawals.
 - **Circuits (`circuits/`)**: Written in Circom. Defines the constraints for the ZK proof, ensuring that the user knows the secret corresponding to a valid leaf in the Merkle Tree.
-- **Frontend (`frontend/`)**: A Next.js web application that manages the user's wallet connection, generates secrets, computes ZK proofs in the browser using `snarkjs`, and submits transactions.
+- **Frontend (`frontend/`)**: A Next.js web application featuring a **Premium Dark Theme** with a "Cosmic" aesthetic. It manages the user's wallet connection, generates secrets, computes ZK proofs in the browser using `snarkjs`, and submits transactions.
 - **CLI (`cli/`)**: A TypeScript-based command-line tool for automated interactions and testing.
 
 ## 📂 Project Structure
