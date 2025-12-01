@@ -13,10 +13,17 @@ export const useWallet = () => {
         isLocked: false,
     });
 
+    const getProvider = () => {
+        if (typeof window !== 'undefined' && 'CasperWalletProvider' in window) {
+            // @ts-ignore
+            return window.CasperWalletProvider();
+        }
+        return null;
+    };
+
     useEffect(() => {
         const checkConnection = async () => {
-            // @ts-ignore
-            const provider = window.CasperWalletProvider;
+            const provider = getProvider();
 
             if (provider) {
                 try {
@@ -55,23 +62,27 @@ export const useWallet = () => {
             checkConnection();
         };
 
-        window.addEventListener('casper-wallet:activeKeyChanged', handleActiveKeyChanged);
-        window.addEventListener('casper-wallet:disconnected', handleDisconnected);
-        window.addEventListener('casper-wallet:connected', handleConnected);
+        if (typeof window !== 'undefined') {
+            window.addEventListener('casper-wallet:activeKeyChanged', handleActiveKeyChanged);
+            window.addEventListener('casper-wallet:disconnected', handleDisconnected);
+            window.addEventListener('casper-wallet:connected', handleConnected);
+        }
 
         return () => {
             clearInterval(interval);
-            window.removeEventListener('casper-wallet:activeKeyChanged', handleActiveKeyChanged);
-            window.removeEventListener('casper-wallet:disconnected', handleDisconnected);
-            window.removeEventListener('casper-wallet:connected', handleConnected);
+            if (typeof window !== 'undefined') {
+                window.removeEventListener('casper-wallet:activeKeyChanged', handleActiveKeyChanged);
+                window.removeEventListener('casper-wallet:disconnected', handleDisconnected);
+                window.removeEventListener('casper-wallet:connected', handleConnected);
+            }
         };
     }, []);
 
     const connect = async () => {
-        // @ts-ignore
-        const provider = window.CasperWalletProvider;
+        const provider = getProvider();
         if (!provider) {
             alert("Casper Wallet extension not found! Please install it.");
+            window.open('https://www.casperwallet.io/', '_blank');
             return;
         }
 
@@ -89,8 +100,7 @@ export const useWallet = () => {
     };
 
     const signDeploy = async (deployJson: any, activeKey: string) => {
-        // @ts-ignore
-        const provider = window.CasperWalletProvider;
+        const provider = getProvider();
         if (!provider) throw new Error("Wallet not connected");
 
         return await provider.sign(JSON.stringify(deployJson), activeKey);
