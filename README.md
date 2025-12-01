@@ -10,6 +10,22 @@ Shroud Protocol is a privacy-preserving mixer built on the Casper Network. It al
 - **User-Friendly**: Includes a modern Web App and a CLI for advanced users.
 - **Developer-Ready**: Built with the Odra framework for robust smart contract development.
 
+## 🔒 How It Works
+
+### 1. Deposit (The "Locking" Phase)
+When you deposit CSPR, the protocol generates a digital "secret note" for you.
+- **Secret Generation**: Your browser generates two random numbers: a `secret` and a `nullifier`.
+- **Commitment**: These two numbers are hashed together to create a **Commitment**. Think of this as a sealed envelope containing your secret.
+- **On-Chain Transaction**: You send the Commitment and funds to the smart contract. The contract adds your commitment to a Merkle Tree but never sees your secret.
+- **User Action**: You receive a **Secret Key**. You must save this to withdraw later.
+
+### 2. Withdraw (The "Unlocking" Phase)
+When you want to withdraw, you use your Secret Key to prove you own one of the deposits without revealing which one.
+- **Proof Generation**: You paste your Secret Key and enter a Recipient Address. The frontend uses `snarkjs` to generate a Zero-Knowledge Proof.
+- **ZK-SNARK**: This proof mathematically demonstrates that you know a secret/nullifier pair for a valid commitment in the Merkle Tree, without revealing which one.
+- **Nullifier**: The proof includes a Nullifier Hash to prevent double-spending.
+- **On-Chain Verification**: The smart contract verifies the proof and sends funds to the recipient, breaking the link between depositor and recipient.
+
 ## � User Interface
  
  The frontend features a **Premium Dark Theme** designed for a modern, immersive experience:

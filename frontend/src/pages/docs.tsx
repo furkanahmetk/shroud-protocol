@@ -52,6 +52,43 @@ export default function Docs() {
                                 </div>
                             </section>
 
+                            {/* How It Works */}
+                            <section className="glass-panel p-8 rounded-3xl border border-white/10">
+                                <div className="flex items-center space-x-4 mb-6">
+                                    <div className="p-3 bg-blue-500/10 rounded-xl text-blue-400">
+                                        <FileText className="w-6 h-6" />
+                                    </div>
+                                    <h2 className="text-2xl font-bold text-white">How It Works</h2>
+                                </div>
+                                <div className="prose prose-invert max-w-none text-gray-300 space-y-6">
+                                    <div>
+                                        <h3 className="text-xl font-bold text-white mb-2">1. Deposit (The "Locking" Phase)</h3>
+                                        <p>
+                                            When you deposit CSPR, the protocol generates a digital "secret note" for you.
+                                        </p>
+                                        <ul className="list-disc pl-5 space-y-1 mt-2">
+                                            <li><strong>Secret Generation:</strong> Your browser generates two random numbers: a <code>secret</code> and a <code>nullifier</code>.</li>
+                                            <li><strong>Commitment:</strong> These two numbers are hashed together to create a <strong>Commitment</strong>. Think of this as a sealed envelope containing your secret.</li>
+                                            <li><strong>On-Chain Transaction:</strong> You send the Commitment and funds to the smart contract. The contract adds your commitment to a Merkle Tree but never sees your secret.</li>
+                                            <li><strong>User Action:</strong> You receive a <strong>Secret Key</strong>. You must save this to withdraw later.</li>
+                                        </ul>
+                                    </div>
+
+                                    <div>
+                                        <h3 className="text-xl font-bold text-white mb-2">2. Withdraw (The "Unlocking" Phase)</h3>
+                                        <p>
+                                            When you want to withdraw, you use your Secret Key to prove you own one of the deposits without revealing which one.
+                                        </p>
+                                        <ul className="list-disc pl-5 space-y-1 mt-2">
+                                            <li><strong>Proof Generation:</strong> You paste your Secret Key and enter a Recipient Address. The frontend uses <code>snarkjs</code> to generate a Zero-Knowledge Proof.</li>
+                                            <li><strong>ZK-SNARK:</strong> This proof mathematically demonstrates that you know a secret/nullifier pair for a valid commitment in the Merkle Tree, without revealing which one.</li>
+                                            <li><strong>Nullifier:</strong> The proof includes a Nullifier Hash to prevent double-spending.</li>
+                                            <li><strong>On-Chain Verification:</strong> The smart contract verifies the proof and sends funds to the recipient, breaking the link between depositor and recipient.</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </section>
+
                             {/* Architecture */}
                             <section className="glass-panel p-8 rounded-3xl border border-white/10">
                                 <div className="flex items-center space-x-4 mb-6">
