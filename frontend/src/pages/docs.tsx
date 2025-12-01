@@ -1,0 +1,132 @@
+import React, { useState } from 'react';
+import Head from 'next/head';
+import Link from 'next/link';
+import { Shield, Wallet, Menu, X, Book, Code, Layers, Terminal, Cpu, FileText } from 'lucide-react';
+import { useWallet } from '@/hooks/useWallet';
+
+import Footer from '@/components/Footer';
+import Navbar from '@/components/Navbar';
+
+export default function Docs() {
+    return (
+        <div className="min-h-screen font-sans text-white selection:bg-brand-500/30 selection:text-brand-200 flex flex-col overflow-x-hidden">
+            <Head>
+                <title>Documentation | Shroud Protocol</title>
+                <meta name="description" content="Technical documentation for Shroud Protocol" />
+            </Head>
+
+            <Navbar />
+
+            <main className="flex-grow pt-32 pb-20 relative">
+                {/* Background Glows */}
+                <div className="absolute top-0 left-1/4 w-96 h-96 bg-brand-500/10 rounded-full blur-[128px] pointer-events-none" />
+                <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-accent-500/5 rounded-full blur-[128px] pointer-events-none" />
+
+                <div className="container mx-auto px-6 relative z-10">
+                    <div className="max-w-4xl mx-auto">
+                        <div className="mb-12 text-center">
+                            <h1 className="text-4xl md:text-5xl font-extrabold mb-6 bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">
+                                Documentation
+                            </h1>
+                            <p className="text-xl text-gray-400">
+                                Everything you need to understand and build with Shroud Protocol.
+                            </p>
+                        </div>
+
+                        <div className="grid gap-12">
+                            {/* Introduction */}
+                            <section className="glass-panel p-8 rounded-3xl border border-white/10">
+                                <div className="flex items-center space-x-4 mb-6">
+                                    <div className="p-3 bg-brand-500/10 rounded-xl text-brand-400">
+                                        <Book className="w-6 h-6" />
+                                    </div>
+                                    <h2 className="text-2xl font-bold text-white">Introduction</h2>
+                                </div>
+                                <div className="prose prose-invert max-w-none text-gray-300">
+                                    <p>
+                                        Shroud Protocol is a privacy-preserving mixer built on the Casper Network. It allows users to deposit CSPR into a smart contract and withdraw it later to a different address, effectively breaking the on-chain link between the depositor and the recipient.
+                                    </p>
+                                    <p className="mt-4">
+                                        This is achieved using <strong>Zero-Knowledge Proofs (ZK-SNARKs)</strong> powered by Groth16 and MiMC hashing, ensuring that the protocol is secure, non-custodial, and trustless.
+                                    </p>
+                                </div>
+                            </section>
+
+                            {/* Architecture */}
+                            <section className="glass-panel p-8 rounded-3xl border border-white/10">
+                                <div className="flex items-center space-x-4 mb-6">
+                                    <div className="p-3 bg-accent-500/10 rounded-xl text-accent-400">
+                                        <Layers className="w-6 h-6" />
+                                    </div>
+                                    <h2 className="text-2xl font-bold text-white">Architecture</h2>
+                                </div>
+                                <div className="space-y-6">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div className="bg-white/5 p-6 rounded-2xl border border-white/5">
+                                            <h3 className="text-lg font-bold text-white mb-2 flex items-center">
+                                                <Code className="w-4 h-4 mr-2 text-brand-400" /> Smart Contracts
+                                            </h3>
+                                            <p className="text-sm text-gray-400">
+                                                Written in Rust using the Odra framework. Handles deposits, manages the Merkle Tree state, and verifies ZK proofs to authorize withdrawals.
+                                            </p>
+                                        </div>
+                                        <div className="bg-white/5 p-6 rounded-2xl border border-white/5">
+                                            <h3 className="text-lg font-bold text-white mb-2 flex items-center">
+                                                <Cpu className="w-4 h-4 mr-2 text-brand-400" /> ZK Circuits
+                                            </h3>
+                                            <p className="text-sm text-gray-400">
+                                                Written in Circom. Defines the constraints for the ZK proof, ensuring that the user knows the secret corresponding to a valid leaf in the Merkle Tree.
+                                            </p>
+                                        </div>
+                                        <div className="bg-white/5 p-6 rounded-2xl border border-white/5">
+                                            <h3 className="text-lg font-bold text-white mb-2 flex items-center">
+                                                <Terminal className="w-4 h-4 mr-2 text-brand-400" /> Frontend & CLI
+                                            </h3>
+                                            <p className="text-sm text-gray-400">
+                                                Interfaces for users to interact with the protocol. The frontend performs client-side proof generation using <code>snarkjs</code>.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </section>
+
+                            {/* Developer Guide */}
+                            <section className="glass-panel p-8 rounded-3xl border border-white/10">
+                                <div className="flex items-center space-x-4 mb-6">
+                                    <div className="p-3 bg-green-500/10 rounded-xl text-green-400">
+                                        <Terminal className="w-6 h-6" />
+                                    </div>
+                                    <h2 className="text-2xl font-bold text-white">Developer Guide</h2>
+                                </div>
+                                <div className="prose prose-invert max-w-none text-gray-300 space-y-4">
+                                    <h3 className="text-xl font-bold text-white">Prerequisites</h3>
+                                    <ul className="list-disc pl-5 space-y-2">
+                                        <li>Node.js v18+</li>
+                                        <li>Rust v1.70+ (for contracts)</li>
+                                        <li>Casper Wallet Extension</li>
+                                    </ul>
+
+                                    <h3 className="text-xl font-bold text-white mt-6">Installation</h3>
+                                    <div className="bg-black/30 p-4 rounded-xl font-mono text-sm text-gray-300 border border-white/5">
+                                        <p>git clone https://github.com/yourusername/shroud-protocol.git</p>
+                                        <p>cd shroud-protocol</p>
+                                        <p>./scripts/install_dependencies.sh</p>
+                                    </div>
+
+                                    <h3 className="text-xl font-bold text-white mt-6">Running Locally</h3>
+                                    <div className="bg-black/30 p-4 rounded-xl font-mono text-sm text-gray-300 border border-white/5">
+                                        <p>cd frontend</p>
+                                        <p>npm install</p>
+                                        <p>npm run dev</p>
+                                    </div>
+                                </div>
+                            </section>
+                        </div>
+                    </div>
+                </div>
+            </main>
+
+            <Footer />
+        </div>
+    );
+}

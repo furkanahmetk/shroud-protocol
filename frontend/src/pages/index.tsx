@@ -1,16 +1,19 @@
 import React, { useState } from 'react';
 import Head from 'next/head';
 import Image from 'next/image';
+import Link from 'next/link';
 import Deposit from '@/components/Deposit';
 import Withdraw from '@/components/Withdraw';
 import { Shield, Wallet, ArrowRight, Lock, EyeOff, Code2, Activity, Users, Globe, ExternalLink, Menu, X, ChevronRight } from 'lucide-react';
 import { useWallet } from '@/hooks/useWallet';
 import { motion, AnimatePresence } from 'framer-motion';
 
+import Footer from '@/components/Footer';
+import Navbar from '@/components/Navbar';
+
 export default function Home() {
     const [activeTab, setActiveTab] = useState<'deposit' | 'withdraw'>('deposit');
-    const { isConnected, activeKey, connect } = useWallet();
-    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    const { isConnected, activeKey } = useWallet();
 
     return (
         <div className="min-h-screen font-sans text-white selection:bg-brand-500/30 selection:text-brand-200 flex flex-col overflow-x-hidden">
@@ -19,46 +22,7 @@ export default function Home() {
                 <meta name="description" content="Privacy-preserving transactions on Casper Network" />
             </Head>
 
-            {/* Navbar */}
-            <header className="fixed top-0 w-full z-50 bg-dark-bg/80 backdrop-blur-md border-b border-white/5">
-                <div className="container mx-auto px-6 h-20 flex justify-between items-center">
-                    <div className="flex items-center space-x-3 cursor-pointer group">
-                        <div className="bg-gradient-to-br from-brand-600 to-accent-600 p-2 rounded-lg shadow-lg shadow-brand-500/20 group-hover:shadow-brand-500/40 transition-all duration-300">
-                            <Shield className="w-6 h-6 text-white" />
-                        </div>
-                        <span className="text-xl font-bold tracking-tight text-white group-hover:text-brand-400 transition-colors">
-                            Shroud Protocol
-                        </span>
-                    </div>
-
-                    <nav className="hidden md:flex items-center space-x-8">
-                        {['How it Works', 'Statistics', 'Docs'].map((item) => (
-                            <a key={item} href="#" className="text-sm font-medium text-gray-400 hover:text-white transition-colors">
-                                {item}
-                            </a>
-                        ))}
-                        <button
-                            onClick={connect}
-                            className={`flex items-center px-5 py-2.5 rounded-full font-medium text-sm transition-all duration-200 ${isConnected
-                                ? 'bg-brand-500/10 text-brand-400 border border-brand-500/20 hover:bg-brand-500/20'
-                                : 'bg-white text-dark-bg hover:bg-gray-100 shadow-lg shadow-white/10 hover:shadow-white/20'
-                                }`}
-                        >
-                            <Wallet className="w-4 h-4 mr-2" />
-                            {isConnected
-                                ? `${activeKey?.slice(0, 6)}...${activeKey?.slice(-4)}`
-                                : 'Connect Wallet'}
-                        </button>
-                    </nav>
-
-                    <button
-                        className="md:hidden p-2 text-gray-400 hover:bg-white/5 rounded-lg"
-                        onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                    >
-                        {isMobileMenuOpen ? <X /> : <Menu />}
-                    </button>
-                </div>
-            </header>
+            <Navbar />
 
             <main className="flex-grow pt-32 pb-20 relative">
                 {/* Background Glows */}
@@ -86,12 +50,15 @@ export default function Home() {
                             </p>
 
                             <div className="flex flex-col sm:flex-row gap-4">
-                                <button className="btn-primary px-8 py-4 rounded-xl text-lg flex items-center justify-center">
+                                <button
+                                    onClick={() => document.getElementById('app-interface')?.scrollIntoView({ behavior: 'smooth' })}
+                                    className="btn-primary px-8 py-4 rounded-xl text-lg flex items-center justify-center"
+                                >
                                     Launch App <ArrowRight className="ml-2 w-5 h-5" />
                                 </button>
-                                <button className="btn-secondary px-8 py-4 rounded-xl text-lg flex items-center justify-center">
+                                <Link href="/docs" className="btn-secondary px-8 py-4 rounded-xl text-lg flex items-center justify-center">
                                     View Documentation
-                                </button>
+                                </Link>
                             </div>
 
                             <div className="mt-12 grid grid-cols-3 gap-8 border-t border-white/10 pt-8">
@@ -129,14 +96,14 @@ export default function Home() {
                 </div>
 
                 {/* App Interface */}
-                <div className="container mx-auto px-4 max-w-lg relative z-10">
+                <div id="app-interface" className="container mx-auto px-4 max-w-lg relative z-10">
                     <div className="glass-card rounded-3xl p-2 mb-24 border border-white/10 shadow-2xl shadow-brand-900/20">
                         <div className="flex mb-2 bg-black/20 rounded-2xl p-1.5">
                             <button
                                 onClick={() => setActiveTab('deposit')}
                                 className={`flex-1 py-3 rounded-xl font-semibold text-sm transition-all duration-200 ${activeTab === 'deposit'
-                                    ? 'bg-white/10 text-white shadow-lg shadow-black/10 ring-1 ring-white/5'
-                                    : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
+                                    ? 'bg-white/10 text-white shadow-lg shadow-white/5'
+                                    : 'text-gray-400 hover:text-white hover:bg-white/5'
                                     }`}
                             >
                                 Deposit
@@ -144,109 +111,82 @@ export default function Home() {
                             <button
                                 onClick={() => setActiveTab('withdraw')}
                                 className={`flex-1 py-3 rounded-xl font-semibold text-sm transition-all duration-200 ${activeTab === 'withdraw'
-                                    ? 'bg-white/10 text-white shadow-lg shadow-black/10 ring-1 ring-white/5'
-                                    : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
+                                    ? 'bg-white/10 text-white shadow-lg shadow-white/5'
+                                    : 'text-gray-400 hover:text-white hover:bg-white/5'
                                     }`}
                             >
                                 Withdraw
                             </button>
                         </div>
 
-                        <div className="p-6">
-                            <AnimatePresence mode="wait">
-                                <motion.div
-                                    key={activeTab}
-                                    initial={{ opacity: 0, y: 10 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    exit={{ opacity: 0, y: -10 }}
-                                    transition={{ duration: 0.2 }}
-                                >
-                                    {activeTab === 'deposit' ? (
-                                        <Deposit isConnected={isConnected} activeKey={activeKey} />
-                                    ) : (
-                                        <Withdraw isConnected={isConnected} activeKey={activeKey} />
-                                    )}
-                                </motion.div>
-                            </AnimatePresence>
-                        </div>
+                        <AnimatePresence mode="wait">
+                            <motion.div
+                                key={activeTab}
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -10 }}
+                                transition={{ duration: 0.2 }}
+                            >
+                                {activeTab === 'deposit' ? (
+                                    <Deposit isConnected={isConnected} activeKey={activeKey} />
+                                ) : (
+                                    <Withdraw isConnected={isConnected} activeKey={activeKey} />
+                                )}
+                            </motion.div>
+                        </AnimatePresence>
                     </div>
                 </div>
 
-                {/* Features */}
-                <div className="bg-white/5 py-24 border-t border-white/5 backdrop-blur-sm">
-                    <div className="container mx-auto px-6">
-                        <div className="text-center max-w-2xl mx-auto mb-16">
-                            <h2 className="text-3xl font-bold text-white mb-4">Why Shroud Protocol?</h2>
-                            <p className="text-gray-400 text-lg">Built on the Casper Network, Shroud provides institutional-grade privacy with a seamless user experience.</p>
-                        </div>
+                {/* Features Section */}
+                <div id="how-it-works" className="container mx-auto px-6 mb-24 relative z-10">
+                    <div className="text-center mb-16">
+                        <h2 className="text-3xl md:text-5xl font-bold mb-6 text-white">
+                            Zero Knowledge, <span className="text-brand-400">Maximum Privacy</span>
+                        </h2>
+                        <p className="text-gray-400 max-w-2xl mx-auto text-lg">
+                            Our protocol uses advanced cryptography to ensure your financial data remains completely private.
+                        </p>
+                    </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                            {[
-                                { icon: EyeOff, title: "Zero Knowledge", desc: "Mathematical proof of ownership without revealing identity." },
-                                { icon: Lock, title: "Non-Custodial", desc: "Full control of your funds via your secret key." },
-                                { icon: Code2, title: "Open Source", desc: "Transparent and auditable code for maximum trust." }
-                            ].map((item, i) => (
-                                <div key={i} className="bg-white/5 p-8 rounded-2xl border border-white/5 hover:border-brand-500/30 hover:bg-white/10 hover:shadow-xl hover:shadow-brand-500/10 transition-all duration-300 group">
-                                    <div className="w-12 h-12 bg-brand-500/10 rounded-xl flex items-center justify-center text-brand-400 mb-6 group-hover:scale-110 transition-transform">
-                                        <item.icon className="w-6 h-6" />
-                                    </div>
-                                    <h3 className="text-xl font-bold text-white mb-3">{item.title}</h3>
-                                    <p className="text-gray-400 leading-relaxed">{item.desc}</p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                        {[
+                            {
+                                icon: Lock,
+                                title: "Deposit",
+                                desc: "Deposit CSPR into the smart contract. You receive a secret key that proves your ownership.",
+                                color: "text-brand-400",
+                                bg: "bg-brand-500/10"
+                            },
+                            {
+                                icon: EyeOff,
+                                title: "Mix",
+                                desc: "Your funds are pooled with others in a Merkle Tree, making it impossible to trace the source.",
+                                color: "text-accent-400",
+                                bg: "bg-accent-500/10"
+                            },
+                            {
+                                icon: ArrowRight,
+                                title: "Withdraw",
+                                desc: "Use your secret key to generate a ZK proof and withdraw to a fresh address anonymously.",
+                                color: "text-green-400",
+                                bg: "bg-green-500/10"
+                            }
+                        ].map((feature, i) => (
+                            <div key={i} className="glass-panel p-8 rounded-3xl border border-white/10 hover:border-brand-500/30 transition-all duration-300 group">
+                                <div className={`w-14 h-14 rounded-2xl ${feature.bg} flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300`}>
+                                    <feature.icon className={`w-7 h-7 ${feature.color}`} />
                                 </div>
-                            ))}
-                        </div>
+                                <h3 className="text-xl font-bold text-white mb-3">{feature.title}</h3>
+                                <p className="text-gray-400 leading-relaxed">
+                                    {feature.desc}
+                                </p>
+                            </div>
+                        ))}
                     </div>
                 </div>
             </main>
 
-            <footer className="bg-dark-bg border-t border-white/5 py-12">
-                <div className="container mx-auto px-6">
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">
-                        <div className="col-span-1 md:col-span-1">
-                            <div className="flex items-center space-x-2 mb-4">
-                                <div className="bg-brand-600 p-1.5 rounded-lg">
-                                    <Shield className="w-5 h-5 text-white" />
-                                </div>
-                                <span className="text-lg font-bold text-white">Shroud</span>
-                            </div>
-                            <p className="text-gray-500 text-sm leading-relaxed">
-                                Privacy-preserving infrastructure for the Casper Network.
-                            </p>
-                        </div>
-                        <div>
-                            <h4 className="font-bold text-white mb-4">Platform</h4>
-                            <ul className="space-y-2 text-sm text-gray-500">
-                                <li><a href="#" className="hover:text-brand-400 transition-colors">Deposit</a></li>
-                                <li><a href="#" className="hover:text-brand-400 transition-colors">Withdraw</a></li>
-                                <li><a href="#" className="hover:text-brand-400 transition-colors">Statistics</a></li>
-                            </ul>
-                        </div>
-                        <div>
-                            <h4 className="font-bold text-white mb-4">Resources</h4>
-                            <ul className="space-y-2 text-sm text-gray-500">
-                                <li><a href="#" className="hover:text-brand-400 transition-colors">Documentation</a></li>
-                                <li><a href="#" className="hover:text-brand-400 transition-colors">GitHub</a></li>
-                                <li><a href="#" className="hover:text-brand-400 transition-colors">Audits</a></li>
-                            </ul>
-                        </div>
-                        <div>
-                            <h4 className="font-bold text-white mb-4">Community</h4>
-                            <ul className="space-y-2 text-sm text-gray-500">
-                                <li><a href="#" className="hover:text-brand-400 transition-colors">Discord</a></li>
-                                <li><a href="#" className="hover:text-brand-400 transition-colors">Twitter</a></li>
-                                <li><a href="#" className="hover:text-brand-400 transition-colors">Telegram</a></li>
-                            </ul>
-                        </div>
-                    </div>
-                    <div className="pt-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center text-sm text-gray-600">
-                        <p>© 2025 Shroud Protocol. All rights reserved.</p>
-                        <div className="flex items-center space-x-6 mt-4 md:mt-0">
-                            <a href="#" className="hover:text-gray-400 transition-colors">Privacy Policy</a>
-                            <a href="#" className="hover:text-gray-400 transition-colors">Terms of Service</a>
-                        </div>
-                    </div>
-                </div>
-            </footer>
+            <Footer />
         </div>
     );
 }
