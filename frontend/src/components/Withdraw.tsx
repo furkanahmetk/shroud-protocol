@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowUpCircle } from 'lucide-react';
 import { CryptoUtils } from '../utils/crypto';
-import { createWithdrawDeploy, sendSignedDeploy } from '../utils/casper';
+import { createWithdrawTransaction, sendSignedTransaction } from '../utils/casper';
 import { useWallet } from '../hooks/useWallet';
 const snarkjs = require('snarkjs');
 
@@ -15,7 +15,7 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
     const [recipient, setRecipient] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
     const [status, setStatus] = useState<'idle' | 'proving' | 'withdrawing' | 'success'>('idle');
-    const { signDeploy } = useWallet();
+    const { signTransaction } = useWallet();
 
     const handleWithdraw = async () => {
         if (!isConnected || !activeKey) return;
@@ -57,12 +57,12 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
 
             setStatus('withdrawing');
 
-            // 4. Create Deploy
+            // 4. Create Transaction (SDK v5)
             const computedRoot = BigInt(publicSignals[0]);
             const nullifierHash = BigInt(publicSignals[1]);
             const proofBytes = new Uint8Array(128); // Dummy proof bytes
 
-            const deployJson = createWithdrawDeploy(
+            const transaction = createWithdrawTransaction(
                 activeKey,
                 proofBytes,
                 computedRoot,
@@ -71,10 +71,10 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
             );
 
             // 5. Sign & Send
-            const signedDeployJson = await signDeploy(deployJson, activeKey);
-            const deployHash = await sendSignedDeploy(signedDeployJson);
+            const signedTransaction = await signTransaction(transaction, activeKey);
+            const transactionHash = await sendSignedTransaction(signedTransaction);
 
-            console.log("Withdraw Deploy Hash:", deployHash);
+            console.log("Withdraw Transaction Hash:", transactionHash);
             setStatus('success');
 
         } catch (e) {
@@ -155,6 +155,17 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
                     </>
                 )}
             </button>
+
+            {/* CLI Tool Guidance */}
+            <div className="mt-4 p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl">
+                <div className="text-sm text-blue-300 font-medium mb-2">💡 CLI Tool Recommended</div>
+                <p className="text-xs text-blue-200/70 leading-relaxed">
+                    For reliable withdrawals with ZK proof generation:
+                </p>
+                <code className="block mt-2 p-2 bg-black/30 rounded text-xs font-mono text-blue-300 break-all">
+                    cd cli && npm start -- withdraw --node https://node.testnet.casper.network --contract CONTRACT_HASH --secret SECRET_FILE
+                </code>
+            </div>
         </div>
     );
 }

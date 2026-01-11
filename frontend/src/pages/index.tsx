@@ -63,12 +63,12 @@ export default function Home() {
 
                             <div className="mt-12 grid grid-cols-3 gap-8 border-t border-white/10 pt-8">
                                 <div>
-                                    <div className="text-3xl font-bold text-white">$1.2M+</div>
-                                    <div className="text-sm text-gray-500 font-medium mt-1">Total Volume</div>
+                                    <div className="text-3xl font-bold text-white">100</div>
+                                    <div className="text-sm text-gray-500 font-medium mt-1">CSPR / Deposit</div>
                                 </div>
                                 <div>
-                                    <div className="text-3xl font-bold text-white">1,420</div>
-                                    <div className="text-sm text-gray-500 font-medium mt-1">Anonymity Set</div>
+                                    <div className="text-3xl font-bold text-white">Testnet</div>
+                                    <div className="text-sm text-gray-500 font-medium mt-1">Network</div>
                                 </div>
                                 <div>
                                     <div className="text-3xl font-bold text-white">~2 min</div>

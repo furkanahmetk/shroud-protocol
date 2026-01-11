@@ -91,7 +91,7 @@ We provide a script to install all necessary dependencies (Rust, Odra, Casper Cl
 
 | Network | Contract Package Hash |
 | :--- | :--- |
-| **Casper Testnet** | `5ebf4ad5f80e5b5613df0506d13d95225150487ac4434cf2c0ffba22d743fa14` |
+| **Casper Testnet** | `35786c3636ef9c60c82dada99c94aa81a6c49ffaceaed2e6f157189dff161733` |
 
 ### 🚀 Quick Start (Automated)
 
@@ -181,21 +181,23 @@ npm run build
     ```bash
     # Generates a secret, saves it to output, and deposits 100 CSPR
     npm start -- deposit \
-      --node http://127.0.0.1:11101 \
+      --node https://node.testnet.casper.network \
       --contract <CONTRACT_HASH> \
       --key ./path/to/secret_key.pem \
-      --output ./my_secret.json
+      --output ./my_secret.json \
+      --session ../contracts/wasm/deposit_session.wasm
     ```
+    > **Note**: The `--session` flag is required for real CSPR transfers.
 
 *   **Withdraw**:
     ```bash
     # Uses the secret to generate a proof and withdraw to a recipient
     npm start -- withdraw \
-      --node http://127.0.0.1:11101 \
+      --node https://node.testnet.casper.network \
       --contract <CONTRACT_HASH> \
       --secrets ./my_secret.json \
       --recipient <RECIPIENT_PUBLIC_KEY_HEX> \
-      --wasm ../circuits/withdraw.wasm \
+      --wasm ../circuits/withdraw_js/withdraw.wasm \
       --zkey ../circuits/withdraw_final.zkey \
       --key ./path/to/payer_key.pem
     ```

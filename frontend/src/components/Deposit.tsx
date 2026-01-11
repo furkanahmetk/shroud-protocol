@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowDownCircle, Copy, Check } from 'lucide-react';
 import { CryptoUtils } from '../utils/crypto';
-import { createDepositDeploy, sendSignedDeploy } from '../utils/casper';
+import { createDepositTransaction, sendSignedTransaction } from '../utils/casper';
 import { useWallet } from '../hooks/useWallet';
 
 interface DepositProps {
@@ -14,7 +14,7 @@ export default function Deposit({ isConnected, activeKey }: DepositProps) {
     const [isProcessing, setIsProcessing] = useState(false);
     const [secret, setSecret] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
-    const { signDeploy } = useWallet();
+    const { signTransaction } = useWallet();
 
     const handleDeposit = async () => {
         if (!isConnected || !activeKey) return;
@@ -27,15 +27,15 @@ export default function Deposit({ isConnected, activeKey }: DepositProps) {
             const { nullifier, secret } = crypto.generateSecrets();
             const commitment = crypto.computeCommitment(nullifier, secret);
 
-            // 2. Create Deploy
-            const deployJson = createDepositDeploy(activeKey, commitment, BigInt(100_000_000_000));
+            // 2. Create Transaction (SDK v5)
+            const transaction = createDepositTransaction(activeKey, commitment, BigInt(100_000_000_000));
 
-            // 3. Sign Deploy
-            const signedDeployJson = await signDeploy(deployJson, activeKey);
+            // 3. Sign Transaction
+            const signedTransactionJson = await signTransaction(transaction, activeKey);
 
-            // 4. Send Deploy
-            const deployHash = await sendSignedDeploy(signedDeployJson);
-            console.log("Deposit Deploy Hash:", deployHash);
+            // 4. Send Transaction
+            const transactionHash = await sendSignedTransaction(signedTransactionJson);
+            console.log("Deposit Transaction Hash:", transactionHash);
 
             // 5. Show Secret to User
             // Format: nullifier-secret-commitment
@@ -67,7 +67,7 @@ export default function Deposit({ isConnected, activeKey }: DepositProps) {
             <div className="bg-white/5 p-6 rounded-2xl border border-white/10">
                 <div className="flex justify-between mb-2">
                     <span className="text-gray-400 text-sm font-medium">Amount to Deposit</span>
-                    <span className="text-brand-400 font-mono text-sm font-medium">Balance: 1,250 CSPR</span>
+                    <span className="text-brand-400 font-mono text-sm font-medium">Balance: {isConnected ? 'Loading...' : 'Connect Wallet'}</span>
                 </div>
                 <div className="flex items-center space-x-3">
                     <input
@@ -132,6 +132,17 @@ export default function Deposit({ isConnected, activeKey }: DepositProps) {
 
             <div className="text-xs text-center text-gray-500 font-medium">
                 + 1.5 CSPR network fee
+            </div>
+
+            {/* CLI Tool Guidance */}
+            <div className="mt-4 p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl">
+                <div className="text-sm text-blue-300 font-medium mb-2">💡 CLI Tool Available</div>
+                <p className="text-xs text-blue-200/70 leading-relaxed">
+                    For enhanced security and reliability, use the CLI tool:
+                </p>
+                <code className="block mt-2 p-2 bg-black/30 rounded text-xs font-mono text-blue-300 break-all">
+                    cd cli && npm start -- deposit --node https://node.testnet.casper.network --contract CONTRACT_HASH --amount 100
+                </code>
             </div>
         </div>
     );

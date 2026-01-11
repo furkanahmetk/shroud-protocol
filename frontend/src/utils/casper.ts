@@ -1,79 +1,99 @@
-import { CasperClient, CLPublicKey, DeployUtil, RuntimeArgs, CLValueBuilder } from 'casper-js-sdk';
+/**
+ * Casper SDK v5 utilities for Shroud Protocol
+ * Uses Transaction API (v2) for Casper Wallet compatibility
+ */
+import {
+    PublicKey,
+    Args,
+    CLValue,
+    ContractCallBuilder,
+    HttpHandler,
+    RpcClient,
+    TransactionV1,
+} from 'casper-js-sdk';
 
 const NODE_URL = process.env.NEXT_PUBLIC_NODE_URL || 'https://node.testnet.casper.network/rpc';
 const NETWORK_NAME = process.env.NEXT_PUBLIC_NETWORK_NAME || 'casper-test';
-const CONTRACT_HASH = process.env.NEXT_PUBLIC_CONTRACT_HASH || 'hash-5ebf4ad5f80e5b5613df0506d13d95225150487ac4434cf2c0ffba22d743fa14';
+const CONTRACT_HASH = process.env.NEXT_PUBLIC_CONTRACT_HASH || '5ebf4ad5f80e5b5613df0506d13d95225150487ac4434cf2c0ffba22d743fa14';
 
-export const createDepositDeploy = (
+// Get contract hash without 'hash-' prefix
+const getContractHash = (): string => {
+    return CONTRACT_HASH.startsWith('hash-') ? CONTRACT_HASH.slice(5) : CONTRACT_HASH;
+};
+
+/**
+ * Create a deposit transaction using SDK v5 ContractCallBuilder
+ */
+export const createDepositTransaction = (
     activeKey: string,
     commitment: bigint,
     amount: bigint
-) => {
-    const senderKey = CLPublicKey.fromHex(activeKey);
+): TransactionV1 => {
+    const senderKey = PublicKey.fromHex(activeKey);
 
-    // Construct args
-    // Note: We relaxed the attached_value check in contract for MVP, 
-    // but we should still try to pass amount if possible or just rely on args.
-    const args = RuntimeArgs.fromMap({
-        commitment: CLValueBuilder.u256(commitment),
-        amount: CLValueBuilder.u512(amount),
+    // Build args using CLValue factory methods
+    const args = Args.fromMap({
+        commitment: CLValue.newCLUInt256(commitment.toString()),
+        amount: CLValue.newCLUInt512(amount.toString()),
     });
 
-    const deploy = DeployUtil.makeDeploy(
-        new DeployUtil.DeployParams(
-            senderKey,
-            NETWORK_NAME,
-            1,
-            1800000 // Gas limit
-        ),
-        DeployUtil.ExecutableDeployItem.newStoredContractByHash(
-            Uint8Array.from(Buffer.from(CONTRACT_HASH.startsWith('hash-') ? CONTRACT_HASH.slice(5) : CONTRACT_HASH, 'hex')),
-            'deposit',
-            args
-        ),
-        DeployUtil.standardPayment(5000000000) // 5 CSPR payment
-    );
+    // Build transaction using ContractCallBuilder
+    const transaction = new ContractCallBuilder()
+        .from(senderKey)
+        .byHash(getContractHash())
+        .entryPoint('deposit')
+        .runtimeArgs(args)
+        .payment(5_000_000_000) // 5 CSPR
+        .chainName(NETWORK_NAME)
+        .ttl(1800000) // 30 minutes
+        .build();
 
-    return DeployUtil.deployToJson(deploy);
+    return transaction;
 };
 
-export const createWithdrawDeploy = (
+/**
+ * Create a withdraw transaction using SDK v5 ContractCallBuilder
+ */
+export const createWithdrawTransaction = (
     activeKey: string,
     proof: Uint8Array,
     root: bigint,
     nullifierHash: bigint,
     recipient: string
-) => {
-    const senderKey = CLPublicKey.fromHex(activeKey);
-    const recipientKey = CLPublicKey.fromHex(recipient);
+): TransactionV1 => {
+    const senderKey = PublicKey.fromHex(activeKey);
+    const recipientKey = PublicKey.fromHex(recipient);
 
-    const args = RuntimeArgs.fromMap({
-        proof: CLValueBuilder.list(Array.from(proof).map(b => CLValueBuilder.u8(b))),
-        root: CLValueBuilder.u256(root),
-        nullifier_hash: CLValueBuilder.u256(nullifierHash),
-        recipient: CLValueBuilder.key(recipientKey),
+    const args = Args.fromMap({
+        proof: CLValue.newCLByteArray(proof),
+        root: CLValue.newCLUInt256(root.toString()),
+        nullifier_hash: CLValue.newCLUInt256(nullifierHash.toString()),
+        recipient: CLValue.newCLKey(recipientKey),
     });
 
-    const deploy = DeployUtil.makeDeploy(
-        new DeployUtil.DeployParams(
-            senderKey,
-            NETWORK_NAME,
-            1,
-            1800000 // Gas limit
-        ),
-        DeployUtil.ExecutableDeployItem.newStoredContractByHash(
-            Uint8Array.from(Buffer.from(CONTRACT_HASH.startsWith('hash-') ? CONTRACT_HASH.slice(5) : CONTRACT_HASH, 'hex')),
-            'withdraw',
-            args
-        ),
-        DeployUtil.standardPayment(10000000000) // 10 CSPR payment
-    );
+    const transaction = new ContractCallBuilder()
+        .from(senderKey)
+        .byHash(getContractHash())
+        .entryPoint('withdraw')
+        .runtimeArgs(args)
+        .payment(10_000_000_000) // 10 CSPR
+        .chainName(NETWORK_NAME)
+        .ttl(1800000)
+        .build();
 
-    return DeployUtil.deployToJson(deploy);
+    return transaction;
 };
 
-export const sendSignedDeploy = async (signedDeployJson: any) => {
-    const client = new CasperClient(NODE_URL);
-    const deploy = DeployUtil.deployFromJson(signedDeployJson).unwrap();
-    return await client.putDeploy(deploy);
+/**
+ * Send a signed transaction to the network
+ */
+export const sendSignedTransaction = async (signedTransaction: TransactionV1): Promise<string> => {
+    const httpHandler = new HttpHandler(NODE_URL);
+    const rpcClient = new RpcClient(httpHandler);
+
+    const result = await rpcClient.putTransaction(signedTransaction);
+    return result.transactionHash.toString();
 };
+
+// Re-export for use in other modules
+export { TransactionV1, PublicKey, Args, CLValue };

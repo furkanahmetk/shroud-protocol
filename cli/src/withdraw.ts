@@ -14,15 +14,27 @@ export async function withdrawCommand(
     console.log('🔓 Loading secrets...');
     const crypto = new CryptoUtils();
     await crypto.init();
-    const { nullifier, secret, commitment } = await crypto.loadSecrets(secretsFile);
+    const { nullifier, secret, commitment, leafIndex } = await crypto.loadSecrets(secretsFile);
 
     console.log('🌳 Reconstructing Merkle Tree...');
-    // In a real implementation, we would query events from the blockchain to reconstruct the tree
-    // For MVP, we assume a mock tree or just use the commitment as the root (simplified)
-    // TODO: Implement event fetching and tree reconstruction
-    const root = commitment; // Placeholder
-    const pathElements = new Array(20).fill(0n); // Placeholder
-    const pathIndices = new Array(20).fill(0); // Placeholder
+    // Create a Merkle tree and insert the commitment at the correct position
+    // For a fresh contract with only our deposit, leafIndex should be 0
+    const tree = crypto.createMerkleTree();
+
+    // Insert dummy commitments up to leafIndex (for contracts with previous deposits)
+    // Then insert our actual commitment
+    // Note: For production, we'd fetch all commitments from on-chain events
+    for (let i = 0; i < leafIndex; i++) {
+        tree.insert(0n); // Placeholder for other deposits
+    }
+    tree.insert(commitment);
+
+    // Get the path for our commitment
+    const { pathElements, pathIndices } = tree.getPath(leafIndex);
+    const root = tree.getRoot();
+
+    console.log(`   Leaf index: ${leafIndex}`);
+    console.log(`   Root: ${root.toString(16).substring(0, 16)}...`);
 
     console.log('⚡ Generating Zero-Knowledge Proof...');
     const input = {
@@ -32,7 +44,7 @@ export async function withdrawCommand(
         pathIndices: pathIndices,
         root: root,
         nullifierHash: crypto.computeNullifierHash(nullifier),
-        recipient: BigInt(recipientAddress), // Assuming recipient is convertible to BigInt for circuit
+        recipient: BigInt(recipientAddress.startsWith('0x') ? recipientAddress : '0x' + recipientAddress),
         relayer: 0n,
         fee: 0n
     };
@@ -44,8 +56,6 @@ export async function withdrawCommand(
     );
 
     // Format proof for contract
-    // This depends on how the contract expects the proof bytes
-    // For MVP we just send dummy bytes if we can't easily serialize
     const proofBytes = new Uint8Array(Buffer.from(JSON.stringify(proof)));
 
     console.log('\n💸 Submitting withdrawal transaction...');

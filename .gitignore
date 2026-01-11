@@ -29,6 +29,7 @@ circuits/verification_key.json
 
 # Secrets
 secrets.json
+deposit_secret*.json
 *.pem
 *.key
 
