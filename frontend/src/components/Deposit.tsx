@@ -14,7 +14,7 @@ export default function Deposit({ isConnected, activeKey }: DepositProps) {
     const [isProcessing, setIsProcessing] = useState(false);
     const [secret, setSecret] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
-    const { signTransaction } = useWallet();
+    const { signTransaction, balance } = useWallet();
 
     const handleDeposit = async () => {
         if (!isConnected || !activeKey) return;
@@ -72,7 +72,7 @@ export default function Deposit({ isConnected, activeKey }: DepositProps) {
             <div className="bg-white/5 p-6 rounded-2xl border border-white/10">
                 <div className="flex justify-between mb-2">
                     <span className="text-gray-400 text-sm font-medium">Amount to Deposit</span>
-                    <span className="text-brand-400 font-mono text-sm font-medium">Balance: {isConnected ? 'Loading...' : 'Connect Wallet'}</span>
+                    <span className="text-brand-400 font-mono text-sm font-medium">Balance: {isConnected ? (balance ? `${balance} CSPR` : 'Loading...') : 'Connect Wallet'}</span>
                 </div>
                 <div className="flex items-center space-x-3">
                     <input
