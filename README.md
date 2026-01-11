@@ -87,11 +87,9 @@ We provide a script to install all necessary dependencies (Rust, Odra, Casper Cl
 | **Circom** | v2.0+ | Compiler for ZK Circuits |
 | **SnarkJS** | v0.7.0+ | ZK Proof generation and verification |
 
-### 📝 Deployed Contract (Testnet)
-
-| Network | Contract Package Hash |
-| :--- | :--- |
-| **Casper Testnet** | `35786c3636ef9c60c82dada99c94aa81a6c49ffaceaed2e6f157189dff161733` |
+### Latest Deployment (Casper Testnet)
+- **Contract Package Hash**: `contract-package-eab05369d5f955239217e3bf2d11d15b996bbb14c7138812591eb2347dfeba4b`
+- **Contract Hash**: `hash-eab05369d5f955239217e3bf2d11d15b996bbb14c7138812591eb2347dfeba4b`
 
 ### 🚀 Quick Start (Automated)
 

@@ -181,4 +181,44 @@ export class CryptoUtils {
         }
         return current;
     }
+
+    /**
+     * Save a commitment to the local commitments cache for a specific contract
+     */
+    async saveCommitmentToCache(contractHash: string, commitment: bigint): Promise<number> {
+        const cacheFile = `.commitments_${contractHash.substring(0, 8)}.json`;
+        let commitments: string[] = [];
+
+        try {
+            if (fs.existsSync(cacheFile)) {
+                commitments = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
+            }
+        } catch (e) {
+            commitments = [];
+        }
+
+        const leafIndex = commitments.length;
+        commitments.push(commitment.toString());
+        fs.writeFileSync(cacheFile, JSON.stringify(commitments, null, 2));
+
+        return leafIndex;
+    }
+
+    /**
+     * Load all commitments from the local cache for a specific contract
+     */
+    async loadCommitmentsFromCache(contractHash: string): Promise<bigint[]> {
+        const cacheFile = `.commitments_${contractHash.substring(0, 8)}.json`;
+
+        try {
+            if (fs.existsSync(cacheFile)) {
+                const data = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
+                return data.map((c: string) => BigInt(c));
+            }
+        } catch (e) {
+            // File doesn't exist or is invalid
+        }
+
+        return [];
+    }
 }

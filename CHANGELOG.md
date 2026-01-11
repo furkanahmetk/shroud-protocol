@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0] - 2026-01-11
+
+### Stress Test & Frontend Update
+- **Stress Test Success**: Validated 3 consecutive deposit-withdrawal cycles (Contract `eab05369...`).
+  - Cycle 1 (Leaf 1): `440caf...` / `ab7588...`
+  - Cycle 2 (Leaf 2): `b4209d...` / `5555ca...`
+  - Cycle 3 (Leaf 3): `23a88d...` / `c5270f...`
+- **CLI Improvements**:
+  - Implemented local `.commitments_*.json` cache for Merkle tree reconstruction.
+  - Removed manual `--leaf-index` flag (now auto-detected).
+  - Fixed tree interpolation logic for valid proofs.
+- **Frontend Updates**:
+  - Updated `casper.ts` to `eab05369...` hash.
+  - Implemented session WASM fetching for valid native CSPR deposits (`createDepositSessionTransaction`).
+  - Fixed `Withdraw.tsx` to use correct `computeMerkleRoot` and proof encoding (`TextEncoder`).
+  - Added support for parsing `leafIndex` from secret JSON.
+
 ## [1.1.0] - 2026-01-11
 
 ### 🎉 Major Milestone: Full On-Chain Deposit & Withdrawal Working

@@ -17,23 +17,49 @@ export async function withdrawCommand(
     const { nullifier, secret, commitment, leafIndex } = await crypto.loadSecrets(secretsFile);
 
     console.log('🌳 Reconstructing Merkle Tree...');
-    // Create a Merkle tree and insert the commitment at the correct position
-    // For a fresh contract with only our deposit, leafIndex should be 0
-    const tree = crypto.createMerkleTree();
 
-    // Insert dummy commitments up to leafIndex (for contracts with previous deposits)
-    // Then insert our actual commitment
-    // Note: For production, we'd fetch all commitments from on-chain events
-    for (let i = 0; i < leafIndex; i++) {
-        tree.insert(0n); // Placeholder for other deposits
+    // Load all commitments from local cache to rebuild the tree exactly as the contract has it
+    const allCommitments = await crypto.loadCommitmentsFromCache(contractHash);
+    console.log(`   Found ${allCommitments.length} commitments in local cache`);
+
+    let pathElements: bigint[];
+    let pathIndices: number[];
+    let root: bigint;
+    let actualIndex: number;
+
+    // Check if our commitment is in the cache
+    const ourIndex = allCommitments.findIndex(c => c === commitment);
+
+    if (ourIndex !== -1 && allCommitments.length > 0) {
+        // Rebuild tree with all real commitments from cache
+        const tree = crypto.createMerkleTree();
+        for (const c of allCommitments) {
+            tree.insert(c);
+        }
+
+        const path = tree.getPath(ourIndex);
+        pathElements = path.pathElements;
+        pathIndices = path.pathIndices;
+        root = tree.getRoot();
+        actualIndex = ourIndex;
+        console.log(`   ✅ Using cached commitments (index: ${actualIndex})`);
+    } else {
+        // Fallback: use stored leafIndex with placeholder zeros (works only for first deposit)
+        console.log('   ⚠️ Commitment not found in cache, using stored leafIndex');
+        const tree = crypto.createMerkleTree();
+        for (let i = 0; i < leafIndex; i++) {
+            tree.insert(0n);
+        }
+        tree.insert(commitment);
+
+        const path = tree.getPath(leafIndex);
+        pathElements = path.pathElements;
+        pathIndices = path.pathIndices;
+        root = tree.getRoot();
+        actualIndex = leafIndex;
     }
-    tree.insert(commitment);
 
-    // Get the path for our commitment
-    const { pathElements, pathIndices } = tree.getPath(leafIndex);
-    const root = tree.getRoot();
-
-    console.log(`   Leaf index: ${leafIndex}`);
+    console.log(`   Leaf index: ${actualIndex}`);
     console.log(`   Root: ${root.toString(16).substring(0, 16)}...`);
 
     console.log('⚡ Generating Zero-Knowledge Proof...');
@@ -72,3 +98,4 @@ export async function withdrawCommand(
     console.log(`\n✅ Withdrawal submitted!`);
     console.log(`Deploy hash: ${deployHash}`);
 }
+

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { TransactionV1, PublicKey } from '../utils/casper';
+import { Transaction, PublicKey } from '../utils/casper';
 
 export interface WalletState {
     isConnected: boolean;
@@ -115,14 +115,14 @@ export const useWallet = () => {
      * Sign a transaction using the Casper Wallet
      * Uses SDK v5 Transaction API for wallet compatibility
      */
-    const signTransaction = async (transaction: TransactionV1, signingPublicKeyHex: string): Promise<TransactionV1> => {
+    const signTransaction = async (transaction: Transaction, signingPublicKeyHex: string): Promise<Transaction> => {
         const provider = getProvider();
         if (!provider) throw new Error("Wallet not connected");
 
         try {
             // Convert transaction to JSON string for wallet
-            // SDK v5 uses TransactionV1.toJSON static method
-            const transactionJson = TransactionV1.toJSON(transaction);
+            // Note: Transaction has toJSON method
+            const transactionJson = transaction.toJSON();
             const transactionJsonString = JSON.stringify(transactionJson);
 
             console.log("Transaction JSON:", transactionJson);
@@ -139,15 +139,12 @@ export const useWallet = () => {
                 throw new Error("User cancelled the signing request");
             }
 
-            // Apply signature to transaction
+            // Apply signature to transaction (mutates in place)
             if (signResult.signature) {
                 const publicKey = PublicKey.fromHex(signingPublicKeyHex);
-                const signedTransaction = TransactionV1.setSignature(
-                    transaction,
-                    signResult.signature,
-                    publicKey
-                );
-                return signedTransaction;
+                // setSignature modifies the transaction in place
+                transaction.setSignature(signResult.signature, publicKey);
+                return transaction;
             }
 
             throw new Error("No signature returned from wallet");

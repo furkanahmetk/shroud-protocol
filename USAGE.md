@@ -53,7 +53,7 @@ This guide provides detailed scenarios and examples for using the Shroud Protoco
     
     npm start -- deposit \
       --node https://node.testnet.casper.network \
-      --contract <CONTRACT_HASH> \
+      --contract eab05369d5f955239217e3bf2d11d15b996bbb14c7138812591eb2347dfeba4b \
       --key ./my_wallet_key.pem \
       --output $SECRET_FILE \
       --session ../contracts/wasm/deposit_session.wasm

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowDownCircle, Copy, Check } from 'lucide-react';
 import { CryptoUtils } from '../utils/crypto';
-import { createDepositTransaction, sendSignedTransaction } from '../utils/casper';
+import { createDepositTransaction, createDepositSessionTransaction, sendSignedTransaction } from '../utils/casper';
 import { useWallet } from '../hooks/useWallet';
 
 interface DepositProps {
@@ -27,8 +27,13 @@ export default function Deposit({ isConnected, activeKey }: DepositProps) {
             const { nullifier, secret } = crypto.generateSecrets();
             const commitment = crypto.computeCommitment(nullifier, secret);
 
-            // 2. Create Transaction (SDK v5)
-            const transaction = createDepositTransaction(activeKey, commitment, BigInt(100_000_000_000));
+            // 2. Fetch Session WASM
+            const wasmResponse = await fetch('/deposit_session.wasm');
+            if (!wasmResponse.ok) throw new Error('Failed to load session WASM');
+            const wasmBytes = new Uint8Array(await wasmResponse.arrayBuffer());
+
+            // 3. Create Transaction which uses Session Code (SDK v5)
+            const transaction = createDepositSessionTransaction(activeKey, commitment, BigInt(100_000_000_000), wasmBytes);
 
             // 3. Sign Transaction
             const signedTransactionJson = await signTransaction(transaction, activeKey);
