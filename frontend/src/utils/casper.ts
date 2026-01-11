@@ -1,8 +1,8 @@
 import { CasperClient, CLPublicKey, DeployUtil, RuntimeArgs, CLValueBuilder } from 'casper-js-sdk';
 
-const NODE_URL = 'http://127.0.0.1:11101/rpc'; // Default to local, should be env var
-const NETWORK_NAME = 'casper-test'; // Default to local
-const CONTRACT_HASH = 'hash-REPLACE_WITH_REAL_HASH'; // Needs to be updated after deployment
+const NODE_URL = process.env.NEXT_PUBLIC_NODE_URL || 'https://node.testnet.casper.network/rpc';
+const NETWORK_NAME = process.env.NEXT_PUBLIC_NETWORK_NAME || 'casper-test';
+const CONTRACT_HASH = process.env.NEXT_PUBLIC_CONTRACT_HASH || 'hash-5ebf4ad5f80e5b5613df0506d13d95225150487ac4434cf2c0ffba22d743fa14';
 
 export const createDepositDeploy = (
     activeKey: string,
