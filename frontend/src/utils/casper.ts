@@ -11,14 +11,22 @@ import {
     RpcClient,
     Transaction,
     SessionBuilder,
+    Deploy,
+    DeployHeader,
+    ExecutableDeployItem,
+    Duration,
+    ModuleBytes,
+    StoredContractByHash,
+    ContractHash,
+    Approval,
 } from 'casper-js-sdk';
 
 const NODE_URL = process.env.NEXT_PUBLIC_NODE_URL || 'https://node.testnet.casper.network/rpc';
 const NETWORK_NAME = process.env.NEXT_PUBLIC_NETWORK_NAME || 'casper-test';
-const CONTRACT_HASH = process.env.NEXT_PUBLIC_CONTRACT_HASH || 'eab05369d5f955239217e3bf2d11d15b996bbb14c7138812591eb2347dfeba4b';
+export const CONTRACT_HASH = process.env.NEXT_PUBLIC_CONTRACT_HASH || 'eab05369d5f955239217e3bf2d11d15b996bbb14c7138812591eb2347dfeba4b';
 
 // Get contract hash without 'hash-' prefix
-const getContractHash = (): string => {
+export const getContractHash = (): string => {
     return CONTRACT_HASH.startsWith('hash-') ? CONTRACT_HASH.slice(5) : CONTRACT_HASH;
 };
 
@@ -37,33 +45,37 @@ export const createDepositSessionTransaction = (
     commitment: bigint,
     amount: bigint,
     wasmBytes: Uint8Array
-): Transaction => {
+): Deploy => {
     const senderKey = PublicKey.fromHex(activeKey);
     const contractHashBytes = Uint8Array.from(Buffer.from(getContractHash(), 'hex'));
 
-    // Arguments for valid_deposit session code
     const args = Args.fromMap({
         contract_package_hash: CLValue.newCLByteArray(contractHashBytes),
         commitment: CLValue.newCLUInt256(commitment.toString()),
         amount: CLValue.newCLUInt512(amount.toString())
     });
 
-    // Create a transaction with session code using SessionBuilder
     const paymentAmount = 50_000_000_000; // 50 CSPR
 
-    // We assume the network accepts standard Session Transactions
-    let builder = new SessionBuilder()
-        .from(senderKey)
-        .chainName(NETWORK_NAME)
-        .wasm(wasmBytes)
-        .runtimeArgs(args)
-        .payment(paymentAmount)
-        .ttl(1800000); // 30 minutes
+    const deployParams = new DeployHeader();
+    deployParams.account = senderKey;
+    deployParams.chainName = NETWORK_NAME;
+    deployParams.gasPrice = 1;
+    deployParams.ttl = new Duration(1800000); // 30 min
 
-    // Build the transaction
-    const transaction = builder.build();
+    const session = new ExecutableDeployItem();
+    session.moduleBytes = new ModuleBytes(
+        wasmBytes,
+        args
+    );
 
-    return transaction;
+    // standardPayment returns an ExecutableDeployItem (ModuleBytes wrapped or similar)
+    // Check if standardPayment returns ExecutableDeployItem or ModuleBytes
+    // Snippet: var S = n.ExecutableDeployItem.standardPayment(c); return n.Deploy.makeDeploy(j, S, w)
+    // So distinct is ExecutableDeployItem.
+    const payment = ExecutableDeployItem.standardPayment(paymentAmount.toString());
+
+    return Deploy.makeDeploy(deployParams, payment, session);
 };
 
 /**
@@ -73,7 +85,7 @@ export const createDepositTransaction = (
     activeKey: string,
     commitment: bigint,
     amount: bigint
-): Transaction => {
+): Deploy => {
     // Fallback - won't work for transfer, but keeps API compatible
     return createDepositSessionTransaction(activeKey, commitment, amount, new Uint8Array(0));
 };
@@ -87,7 +99,7 @@ export const createWithdrawTransaction = (
     root: bigint,
     nullifierHash: bigint,
     recipient: string
-): Transaction => {
+): Deploy => {
     const senderKey = PublicKey.fromHex(activeKey);
     const recipientKey = PublicKey.fromHex(recipient);
 
@@ -98,29 +110,45 @@ export const createWithdrawTransaction = (
         recipient: CLValue.newCLPublicKey(recipientKey),
     });
 
-    const transaction = new ContractCallBuilder()
-        .from(senderKey)
-        .byHash(getContractHash())
-        .entryPoint('withdraw')
-        .runtimeArgs(args)
-        .payment(10_000_000_000) // 10 CSPR
-        .chainName(NETWORK_NAME)
-        .ttl(1800000)
-        .build();
+    const deployParams = new DeployHeader();
+    deployParams.account = senderKey;
+    deployParams.chainName = NETWORK_NAME;
+    deployParams.gasPrice = 1;
+    deployParams.ttl = new Duration(1800000);
 
-    return transaction;
+    const session = new ExecutableDeployItem();
+    // StoredContractByHash expects ContractHash object
+    // Assuming ContractHash constructor takes Uint8Array or we use static method
+    // Previous snippet saw: n.ContractHash.newContract(i) -> likely static method?
+    // Let's try to construct it.
+    session.storedContractByHash = new StoredContractByHash(
+        ContractHash.newContract(getContractHash()),
+        'withdraw',
+        args
+    );
+
+    const payment = ExecutableDeployItem.standardPayment('10000000000'); // 10 CSPR as string
+
+    return Deploy.makeDeploy(deployParams, payment, session);
 };
 
 /**
  * Send a signed transaction to the network
  */
-export const sendSignedTransaction = async (signedTransaction: Transaction): Promise<string> => {
+export const sendSignedTransaction = async (signedTransaction: Transaction | Deploy): Promise<string> => {
     const httpHandler = new HttpHandler(NODE_URL);
     const rpcClient = new RpcClient(httpHandler);
 
-    const result = await rpcClient.putTransaction(signedTransaction);
-    return result.transactionHash.toString();
+    if (signedTransaction instanceof Transaction) {
+        const result = await rpcClient.putTransaction(signedTransaction);
+        return result.transactionHash.toString();
+    } else {
+        // Handle Legacy Deploy
+        // Use implicit cast to any if method missing on strict type
+        const result = await (rpcClient as any).deploy(signedTransaction);
+        return result.deploy_hash;
+    }
 };
 
 // Re-export for use in other modules
-export { Transaction, PublicKey, Args, CLValue };
+export { Transaction, PublicKey, Args, CLValue, Deploy, Approval };
