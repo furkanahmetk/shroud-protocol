@@ -10,6 +10,7 @@ import {
     HttpHandler,
     RpcClient,
     Transaction,
+    SessionBuilder,
 } from 'casper-js-sdk';
 
 const NODE_URL = process.env.NEXT_PUBLIC_NODE_URL || 'https://node.testnet.casper.network/rpc';
@@ -26,15 +27,7 @@ const getContractHash = (): string => {
  */
 // Re-export DeployUtil for internal use if needed
 // SDK v5 imports
-import {
-    // PublicKey, // Already imported above
-    // Args, // Already imported above
-    // CLValue, // Already imported above
-    // ContractCallBuilder, // Already imported above
-    // HttpHandler, // Already imported above
-    // RpcClient, // Already imported above
-    // Transaction, // Already imported above
-} from 'casper-js-sdk';
+// The main import block at the top of the file is used for all SDK v5 imports.
 
 /**
  * Create a deposit transaction using session WASM (required for CSPR transfer)
@@ -55,54 +48,20 @@ export const createDepositSessionTransaction = (
         amount: CLValue.newCLUInt512(amount.toString())
     });
 
-    // Create a transaction with session code
-    // In SDK v5, we can construct the transaction manually or use a builder if available
-    // Assuming standard transaction structure for session code:
+    // Create a transaction with session code using SessionBuilder
     const paymentAmount = 50_000_000_000; // 50 CSPR
 
-    // Construct transaction using available Transaction API
-    // Note: If Transaction.newSession doesn't exist, we might need to use `new Transaction(...)` logic
-    // But since ContractCallBuilder is used below, there might typically be a way to build session txs.
-    // For now, attempting the most direct v5 approach.
+    // We assume the network accepts standard Session Transactions
+    let builder = new SessionBuilder()
+        .from(senderKey)
+        .chainName(NETWORK_NAME)
+        .wasm(wasmBytes)
+        .runtimeArgs(args)
+        .payment(paymentAmount)
+        .ttl(1800000); // 30 minutes
 
-    // We'll trust that the wallet can sign this.
-    // Since we don't have types validation here, we follow the pattern:
-    // Session code transaction usually sets the `session` field to ModuleBytes.
-
-    // Using the constructor if static helper is missing:
-    // const tx = new Transaction({ ... });
-
-    // However, looking at SDK v5 docs (mentally), Transaction has helpers.
-    // Let's assume Transaction.fromSession isn't there, but we can verify usage.
-
-    // Let's try to mock the behavior:
-    // This is risky without docs.
-    // But `ContractCallBuilder` produces a Transaction.
-
-    // Let's rely on standard object construction if possible.
-    // Actually, let's keep it simple: if SDK v5 fully removed DeployUtil, it introduced Transaction.
-
-    /* 
-       Transaction({
-          from: PublicKey,
-          networkName: string,
-          args: Args,
-          session: Uint8Array (wasm)
-          payment: number
-       })
-    */
-
-    // Let's try this signature (common in new SDKs):
-    const transaction = new Transaction(
-        senderKey,
-        NETWORK_NAME,
-        {
-            moduleBytes: wasmBytes,
-            args: args
-        },
-        CLValue.newCLUInt512(paymentAmount.toString()), // payment as U512
-        1800000 // ttl
-    );
+    // Build the transaction
+    const transaction = builder.build();
 
     return transaction;
 };
