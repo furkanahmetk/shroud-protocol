@@ -6,8 +6,7 @@ export async function depositCommand(
     contractHash: string,
     senderKeyPath: string,
     outputFile: string,
-    sessionWasmPath?: string,
-    leafIndex: number = 0
+    sessionWasmPath?: string
 ) {
     console.log('🔐 Generating secrets...');
     const crypto = new CryptoUtils();
@@ -17,8 +16,11 @@ export async function depositCommand(
 
     console.log(`✅ Commitment: ${commitment.toString(16)}`);
 
+    // Auto-detect leaf index from local cache
+    const leafIndex = await crypto.saveCommitmentToCache(contractHash, commitment);
+
     console.log('\n📝 Saving secrets to file...');
-    console.log(`   Leaf index: ${leafIndex}`);
+    console.log(`   Leaf index: ${leafIndex} (auto-detected)`);
     await crypto.saveSecrets(nullifier, secret, commitment, outputFile, leafIndex);
 
     console.log('\n💸 Submitting deposit transaction...');
@@ -39,3 +41,4 @@ export async function depositCommand(
     console.log(`Deploy hash: ${deployHash}`);
     console.log(`\n⚠️  IMPORTANT: Keep ${outputFile} safe! You need it to withdraw.`);
 }
+

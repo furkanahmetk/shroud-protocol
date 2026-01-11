@@ -32,7 +32,6 @@ npm start -- deposit \
 | `-k, --key <path>` | Path to sender secret key (PEM) | Yes |
 | `-o, --output <path>` | Output file for secrets | Yes |
 | `-S, --session <path>` | Path to session WASM for real CSPR transfer | **Required for real transfers** |
-| `-l, --leaf-index <n>` | Leaf index in Merkle tree (default: 0) | No |
 
 > **Important**: The `--session` flag is required to actually transfer CSPR. Without it, only the commitment is registered but no funds are transferred.
 

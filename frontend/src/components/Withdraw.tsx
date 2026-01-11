@@ -28,23 +28,32 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
             const nullifier = BigInt(secretData.nullifier);
             const secret = BigInt(secretData.secret);
             const commitment = BigInt(secretData.commitment);
+            const leafIndex = secretData.leafIndex ? parseInt(secretData.leafIndex) : 0;
 
             // 2. Init Crypto
             const crypto = new CryptoUtils();
             await crypto.init();
 
             // 3. Generate Proof
+            // Calculate path indices from leaf index (bit decomposition)
+            const pathIndices = new Array(20).fill(0).map((_, i) => (leafIndex >> i) & 1);
+
+            // Note: For full functionality with multiple deposits, we would need to 
+            // fetch sibling commitments (pathElements) from the blockchain.
+            // Current assumption: Empty tree (zeros) except for our leaf.
             const pathElements = new Array(20).fill(0n);
-            const pathIndices = new Array(20).fill(0);
+
+            // Compute root for the given path
+            const computedRoot = crypto.computeMerkleRoot(commitment, pathIndices, pathElements);
 
             const input = {
                 nullifier: nullifier,
                 secret: secret,
                 pathElements: pathElements,
                 pathIndices: pathIndices,
-                root: commitment,
+                root: computedRoot,
                 nullifierHash: crypto.computeNullifierHash(nullifier),
-                recipient: 0n, // Dummy recipient for proof
+                recipient: BigInt(recipient.startsWith('0x') ? recipient : '0x' + recipient),
                 relayer: 0n,
                 fee: 0n
             };
@@ -58,15 +67,16 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
             setStatus('withdrawing');
 
             // 4. Create Transaction (SDK v5)
-            const computedRoot = BigInt(publicSignals[0]);
-            const nullifierHash = BigInt(publicSignals[1]);
-            const proofBytes = new Uint8Array(128); // Dummy proof bytes
+            // Contract returns root and nullifierHash as public signals (verified by circuit)
+            // We use our computed root to ensure consistency
+            const proofJson = JSON.stringify(proof);
+            const proofBytes = new TextEncoder().encode(proofJson);
 
             const transaction = createWithdrawTransaction(
                 activeKey,
                 proofBytes,
                 computedRoot,
-                nullifierHash,
+                BigInt(publicSignals[1]), // nullifier_hash from signals
                 recipient
             );
 
