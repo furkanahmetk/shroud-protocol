@@ -1,3 +1,6 @@
 [project]
 name = "shroud-protocol"
-contracts = ["ShroudProtocol"]
+
+[[contracts]]
+name = "ShroudProtocol"
+fqn = "shroud_protocol::shroud_protocol::ShroudProtocol"
