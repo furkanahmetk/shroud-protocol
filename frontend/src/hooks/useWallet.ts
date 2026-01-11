@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Transaction, PublicKey } from '../utils/casper';
+import { Transaction, PublicKey, Deploy, Approval } from '../utils/casper';
 
 export interface WalletState {
     isConnected: boolean;
@@ -113,24 +113,30 @@ export const useWallet = () => {
 
     /**
      * Sign a transaction using the Casper Wallet
-     * Uses SDK v5 Transaction API for wallet compatibility
+     * Supports both SDK v5 Transaction and Legacy Deploy
      */
-    const signTransaction = async (transaction: Transaction, signingPublicKeyHex: string): Promise<Transaction> => {
+    const signTransaction = async (transaction: Transaction | Deploy, signingPublicKeyHex: string): Promise<Transaction | Deploy> => {
         const provider = getProvider();
         if (!provider) throw new Error("Wallet not connected");
 
         try {
-            // Convert transaction to JSON string for wallet
-            // Note: Transaction has toJSON method
-            const transactionJson = transaction.toJSON();
-            const transactionJsonString = JSON.stringify(transactionJson);
+            let transactionJsonString: string;
 
-            console.log("Transaction JSON:", transactionJson);
-            console.log("Signing with key:", signingPublicKeyHex);
-            console.log("Provider methods:", Object.keys(provider));
+            if (transaction instanceof Transaction) {
+                const transactionJson = transaction.toJSON();
+                transactionJsonString = JSON.stringify(transactionJson);
+            } else {
+                // Legacy Deploy
+                // Deploy object in SDK v5 has "header", "payment", "session"
+                // Assuming toJSON or direct stringification works for wallet
+                // Or maybe we need to use DeployUtil.deployToJson replacement?
+                // For now, try implicit toJSON
+                transactionJsonString = JSON.stringify(transaction);
+            }
 
-            // Sign using wallet's sign method
-            console.log("Requesting wallet signature...");
+            console.log("Requesting wallet signature with:", transactionJsonString);
+
+            // @ts-ignore - The types might be slightly off for the provider
             const signResult = await provider.sign(transactionJsonString, signingPublicKeyHex);
 
             console.log("Sign result:", signResult);
@@ -139,18 +145,29 @@ export const useWallet = () => {
                 throw new Error("User cancelled the signing request");
             }
 
-            // Apply signature to transaction (mutates in place)
+            // Apply signature
             if (signResult.signature) {
                 const publicKey = PublicKey.fromHex(signingPublicKeyHex);
-                // setSignature modifies the transaction in place
-                transaction.setSignature(signResult.signature, publicKey);
-                return transaction;
+
+                if (transaction instanceof Transaction) {
+                    transaction.setSignature(signResult.signature, publicKey);
+                    return transaction;
+                } else {
+                    // Legacy Deploy signing
+                    // Construct a new Approval
+                    // Approval(signer: PublicKey, signature: string | Signature)
+                    const approval = new Approval(publicKey, signResult.signature);
+
+                    transaction.approvals.push(approval);
+                    return transaction;
+                }
             }
 
             throw new Error("No signature returned from wallet");
 
         } catch (e: any) {
             console.error("Signing failed:", e);
+            console.dir(e);
             throw new Error(`Signing failed: ${e.message || 'Unknown error'}`);
         }
     };

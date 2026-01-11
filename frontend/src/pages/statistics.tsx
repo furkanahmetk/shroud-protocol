@@ -3,11 +3,12 @@ import Head from 'next/head';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { Activity, Users, DollarSign, Clock, Shield, Lock, ExternalLink, CheckCircle } from 'lucide-react';
+import { getContractHash } from '@/utils/casper';
 
 export default function Statistics() {
     // Contract information
     const contractInfo = {
-        packageHash: '5ebf4ad5f80e5b5613df0506d13d95225150487ac4434cf2c0ffba22d743fa14',
+        packageHash: getContractHash(),
         network: 'casper-test',
         depositAmount: '100 CSPR',
         proofSystem: 'Groth16 (ZK-SNARK)',
