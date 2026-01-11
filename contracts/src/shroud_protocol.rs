@@ -35,6 +35,13 @@ impl ShroudProtocol {
         // // For now we just start empty.
     }
 
+    /// Fund the contract's purse with CSPR for withdrawal payouts
+    #[odra(payable)]
+    pub fn fund(&mut self) {
+        // Simply accept the attached value - Odra handles purse management
+        // The attached CSPR will be available via self.env().transfer_tokens()
+    }
+
     #[odra(payable)]
     pub fn deposit(&mut self, commitment: U256) {
         // 1. Check amount

@@ -29,6 +29,9 @@ impl Default for MerkleTree {
 
 impl MerkleTree {
     pub fn insert(&mut self, leaf: U256) {
+        // Initialize constants ONCE per transaction
+        let constants = mimc::get_constants();
+
         let mut current_index = self.next_index;
         let mut current_level_hash = leaf;
         let mut left;
@@ -44,7 +47,7 @@ impl MerkleTree {
                 right = current_level_hash;
             }
 
-            current_level_hash = hash_pair(left, right);
+            current_level_hash = hash_pair(left, right, &constants);
             current_index /= 2;
         }
 
@@ -71,21 +74,32 @@ impl MerkleTree {
     }
 }
 
-// TODO: Implement actual MiMC7 hash function matching the circuit
-// For now using a placeholder that is at least better than addition
-fn hash_pair(left: U256, right: U256) -> U256 {
-    // This is NOT secure and does not match the circuit.
-    // It is a placeholder for the MVP refactor to Odra.
-    // In production, this MUST be replaced with the MiMC7 implementation.
-    let mut input = Vec::new();
-    input.extend_from_slice(&left.to_bytes().unwrap());
-    input.extend_from_slice(&right.to_bytes().unwrap());
+use crate::mimc;
+use ark_bn254::Fr;
+use ark_ff::{PrimeField, BigInteger};
+use casper_types::bytesrepr::FromBytes;
+
+fn hash_pair(left: U256, right: U256, constants: &[Fr]) -> U256 {
+    // Convert U256 to Fr using raw little-endian bytes (NO length prefix)
+    let mut left_bytes = [0u8; 32];
+    left.to_little_endian(&mut left_bytes);
     
-    // let hash = casper_types::bytesrepr::Bytes::from(input);
-    // Odra/Casper doesn't expose MiMC natively.
-    // We would need to implement the field arithmetic here.
-    // Returning a dummy hash for now to allow compilation and logic testing.
-    // Ideally we use a crate like `mimc-rs` if compatible.
-    let (result, _) = left.overflowing_add(right);
-    result
+    let mut right_bytes = [0u8; 32];
+    right.to_little_endian(&mut right_bytes);
+    
+    // ark-bn254 from_le_bytes_mod_order
+    let left_fr = Fr::from_le_bytes_mod_order(&left_bytes);
+    let right_fr = Fr::from_le_bytes_mod_order(&right_bytes);
+
+    let res_fr = mimc::multi_hash(&[left_fr, right_fr], constants);
+
+    // Convert back to U256
+    let res_bytes = res_fr.into_bigint().to_bytes_le();
+    
+    // Safely construct U256 from bytes, handling potential length mismatch
+    let mut padded_bytes = [0u8; 32];
+    let len = res_bytes.len().min(32);
+    padded_bytes[..len].copy_from_slice(&res_bytes[..len]);
+    
+    U256::from_little_endian(&padded_bytes)
 }

@@ -15,9 +15,11 @@ program.command('deposit')
     .requiredOption('-c, --contract <hash>', 'Contract hash')
     .requiredOption('-k, --key <path>', 'Path to sender secret key')
     .requiredOption('-o, --output <path>', 'Output file for secrets')
+    .option('-S, --session <path>', 'Path to session WASM for real CSPR transfer')
+    .option('-l, --leaf-index <number>', 'Leaf index in Merkle tree (default: 0 for fresh contract)', '0')
     .action(async (options) => {
         try {
-            await depositCommand(options.node, options.contract, options.key, options.output);
+            await depositCommand(options.node, options.contract, options.key, options.output, options.session, parseInt(options.leafIndex));
         } catch (e) {
             console.error(e);
         }

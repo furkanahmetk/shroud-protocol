@@ -13,34 +13,66 @@ export class BlockchainClient {
     async deposit(
         commitment: bigint,
         amount: bigint,
-        senderKeyPath: string
+        senderKeyPath: string,
+        sessionWasmPath?: string
     ): Promise<string> {
-        const keyPair = Keys.Ed25519.loadKeyPairFromPrivateFile(senderKeyPath);
+        let keyPair;
+        try {
+            keyPair = Keys.Ed25519.loadKeyPairFromPrivateFile(senderKeyPath);
+        } catch (e) {
+            keyPair = Keys.Secp256K1.loadKeyPairFromPrivateFile(senderKeyPath);
+        }
 
+        // If session WASM is provided, use ModuleBytes to transfer real CSPR
+        if (sessionWasmPath && fs.existsSync(sessionWasmPath)) {
+            const sessionWasm = new Uint8Array(fs.readFileSync(sessionWasmPath));
+
+            const args = RuntimeArgs.fromMap({
+                contract_package_hash: CLValueBuilder.byteArray(Buffer.from(this.contractHash, 'hex')),
+                commitment: CLValueBuilder.u256(commitment.toString()),
+                amount: CLValueBuilder.u512(amount.toString()),
+            });
+
+            const deploy = DeployUtil.makeDeploy(
+                new DeployUtil.DeployParams(
+                    keyPair.publicKey,
+                    'casper-test',
+                    1,
+                    1800000
+                ),
+                DeployUtil.ExecutableDeployItem.newModuleBytes(sessionWasm, args),
+                // Payment covers: gas (~50 CSPR) + deposit amount (100 CSPR)
+                DeployUtil.standardPayment(200000000000) // 200 CSPR total
+            );
+
+            const signedDeploy = deploy.sign([keyPair]);
+            return await this.client.putDeploy(signedDeploy);
+        }
+
+        // Fallback: call stored contract directly (no real CSPR transfer)
         const args = RuntimeArgs.fromMap({
-            commitment: CLValueBuilder.u256(commitment),
-            amount: CLValueBuilder.u512(amount),
+            commitment: CLValueBuilder.u256(commitment.toString()),
+            amount: CLValueBuilder.u512(amount.toString()),
         });
 
         const deploy = DeployUtil.makeDeploy(
             new DeployUtil.DeployParams(
                 keyPair.publicKey,
-                'casper-test', // Chain name
+                'casper-test',
                 1,
-                1800000 // Gas limit
+                1800000
             ),
-            DeployUtil.ExecutableDeployItem.newStoredContractByHash(
+            DeployUtil.ExecutableDeployItem.newStoredVersionContractByHash(
                 Uint8Array.from(Buffer.from(this.contractHash, 'hex')),
+                null,
                 'deposit',
                 args
             ),
-            DeployUtil.standardPayment(5000000000) // Payment amount
+            DeployUtil.standardPayment(100000000000)
         );
 
         const signedDeploy = deploy.sign([keyPair]);
-        const deployHash = await this.client.putDeploy(signedDeploy);
-
-        return deployHash;
+        return await this.client.putDeploy(signedDeploy);
     }
 
     async withdraw(
@@ -50,13 +82,18 @@ export class BlockchainClient {
         recipient: string,
         senderKeyPath: string
     ): Promise<string> {
-        const keyPair = Keys.Ed25519.loadKeyPairFromPrivateFile(senderKeyPath);
+        let keyPair;
+        try {
+            keyPair = Keys.Ed25519.loadKeyPairFromPrivateFile(senderKeyPath);
+        } catch (e) {
+            keyPair = Keys.Secp256K1.loadKeyPairFromPrivateFile(senderKeyPath);
+        }
         const recipientKey = CLPublicKey.fromHex(recipient);
 
         const args = RuntimeArgs.fromMap({
             proof: CLValueBuilder.list(Array.from(proof).map(b => CLValueBuilder.u8(b))),
-            root: CLValueBuilder.u256(root),
-            nullifier_hash: CLValueBuilder.u256(nullifierHash),
+            root: CLValueBuilder.u256(root.toString()),
+            nullifier_hash: CLValueBuilder.u256(nullifierHash.toString()),
             recipient: CLValueBuilder.key(recipientKey),
         });
 
@@ -67,12 +104,13 @@ export class BlockchainClient {
                 1,
                 1800000
             ),
-            DeployUtil.ExecutableDeployItem.newStoredContractByHash(
+            DeployUtil.ExecutableDeployItem.newStoredVersionContractByHash(
                 Uint8Array.from(Buffer.from(this.contractHash, 'hex')),
+                null,
                 'withdraw',
                 args
             ),
-            DeployUtil.standardPayment(10000000000)
+            DeployUtil.standardPayment(100000000000) // 100 CSPR
         );
 
         const signedDeploy = deploy.sign([keyPair]);

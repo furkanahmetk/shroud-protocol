@@ -51,11 +51,12 @@ This guide provides detailed scenarios and examples for using the Shroud Protoco
     DATE=$(date +%F)
     SECRET_FILE="./secrets/deposit_$DATE.json"
     
-    npm start -- prefix -- deposit \
-      --node http://127.0.0.1:11101 \
+    npm start -- deposit \
+      --node https://node.testnet.casper.network \
       --contract <CONTRACT_HASH> \
       --key ./my_wallet_key.pem \
-      --output $SECRET_FILE
+      --output $SECRET_FILE \
+      --session ../contracts/wasm/deposit_session.wasm
       
     echo "Deposited! Secret saved to $SECRET_FILE"
     ```
