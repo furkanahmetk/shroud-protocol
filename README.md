@@ -81,11 +81,17 @@ We provide a script to install all necessary dependencies (Rust, Odra, Casper Cl
 | Tool | Version | Purpose |
 | :--- | :--- | :--- |
 | **Node.js** | v18+ | Runtime for CLI and Frontend |
-| **Rust** | v1.70+ | Language for Smart Contracts |
-| **Cargo Odra** | Latest | Framework for Casper Contracts |
-| **Casper Client**| Latest | Tool for interacting with Casper Network |
+| **Rust** | nightly | Language for Smart Contracts |
+| **Cargo Odra** | 2.4.0+ | Framework for Casper Contracts |
+| **Casper Client**| 5.0.0+ | Tool for interacting with Casper Network |
 | **Circom** | v2.0+ | Compiler for ZK Circuits |
 | **SnarkJS** | v0.7.0+ | ZK Proof generation and verification |
+
+### 📝 Deployed Contract (Testnet)
+
+| Network | Contract Package Hash |
+| :--- | :--- |
+| **Casper Testnet** | `5ebf4ad5f80e5b5613df0506d13d95225150487ac4434cf2c0ffba22d743fa14` |
 
 ### 🚀 Quick Start (Automated)
 

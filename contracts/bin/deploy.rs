@@ -14,8 +14,8 @@ fn main() {
     // Use the explicitly exported env() from the backend crate
     let env = odra_casper_livenet_env::env();
     
-    // Set gas for deployment (400 CSPR)
-    env.set_gas(400_000_000_000u64); // 400 * 10^9
+    // Set gas for deployment (600 CSPR)
+    env.set_gas(600_000_000_000u64); // 600 * 10^9
 
     println!("Deploying Shroud Protocol...");
     let contract = ShroudProtocol::deploy(&env, NoArgs);
