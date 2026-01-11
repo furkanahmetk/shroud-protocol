@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Transaction, PublicKey, Deploy, Approval } from '../utils/casper';
+import { Transaction, PublicKey, Deploy, Approval, deployToLegacyJson, getBalance } from '../utils/casper';
 
 export interface WalletState {
     isConnected: boolean;
     activeKey: string | null;
     isLocked: boolean;
+    balance: string | null;
 }
 
 export const useWallet = () => {
@@ -12,6 +13,7 @@ export const useWallet = () => {
         isConnected: false,
         activeKey: null,
         isLocked: false,
+        balance: null,
     });
 
     const getProvider = useCallback(() => {
@@ -20,6 +22,15 @@ export const useWallet = () => {
             return window.CasperWalletProvider();
         }
         return null;
+    }, []);
+
+    const updateBalance = useCallback(async (activeKey: string) => {
+        try {
+            const balance = await getBalance(activeKey);
+            setWalletState(prev => ({ ...prev, balance }));
+        } catch (e) {
+            console.error("Failed to update balance", e);
+        }
     }, []);
 
     useEffect(() => {
@@ -31,11 +42,27 @@ export const useWallet = () => {
                     const isConnected = await provider.isConnected();
                     if (isConnected) {
                         const activeKey = await provider.getActivePublicKey();
-                        setWalletState({
+
+                        // Check if we need to update balance (if key changed or balance is null)
+                        const shouldUpdateBalance = activeKey !== walletState.activeKey || walletState.balance === null;
+
+                        setWalletState(prev => ({
+                            ...prev,
                             isConnected: true,
                             activeKey: activeKey,
                             isLocked: false,
-                        });
+                        }));
+
+                        if (shouldUpdateBalance) {
+                            updateBalance(activeKey);
+                        }
+                    } else {
+                        setWalletState(prev => ({
+                            ...prev,
+                            isConnected: false,
+                            activeKey: null,
+                            balance: null
+                        }));
                     }
                 } catch (e) {
                     console.error("Error checking wallet connection:", e);
@@ -44,7 +71,7 @@ export const useWallet = () => {
         };
 
         checkConnection();
-        const interval = setInterval(checkConnection, 1000);
+        const interval = setInterval(checkConnection, 5000); // Check every 5s
 
         const handleActiveKeyChanged = (event: any) => {
             console.log("Active key changed:", event.detail);
@@ -52,7 +79,7 @@ export const useWallet = () => {
         };
 
         const handleDisconnected = () => {
-            setWalletState(prev => ({ ...prev, isConnected: false, activeKey: null }));
+            setWalletState(prev => ({ ...prev, isConnected: false, activeKey: null, balance: null }));
         };
 
         const handleConnected = () => {
@@ -73,7 +100,7 @@ export const useWallet = () => {
                 window.removeEventListener('casper-wallet:connected', handleConnected);
             }
         };
-    }, [getProvider]);
+    }, [getProvider, updateBalance]); // removed walletState from deps to avoid infinite loop
 
     const connect = async (): Promise<boolean> => {
         const provider = getProvider();
@@ -90,7 +117,9 @@ export const useWallet = () => {
                     isConnected: true,
                     activeKey: activeKey,
                     isLocked: false,
+                    balance: null // will trigger update in effect
                 });
+                await updateBalance(activeKey);
             }
             return connected;
         } catch (e) {
@@ -107,6 +136,7 @@ export const useWallet = () => {
                 isConnected: false,
                 activeKey: null,
                 isLocked: false,
+                balance: null
             });
         }
     };
@@ -127,11 +157,9 @@ export const useWallet = () => {
                 transactionJsonString = JSON.stringify(transactionJson);
             } else {
                 // Legacy Deploy
-                // Deploy object in SDK v5 has "header", "payment", "session"
-                // Assuming toJSON or direct stringification works for wallet
-                // Or maybe we need to use DeployUtil.deployToJson replacement?
-                // For now, try implicit toJSON
-                transactionJsonString = JSON.stringify(transaction);
+                // Use manual serialization helper
+                const deployJson = deployToLegacyJson(transaction);
+                transactionJsonString = JSON.stringify(deployJson);
             }
 
             console.log("Requesting wallet signature with:", transactionJsonString);
