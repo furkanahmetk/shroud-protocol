@@ -12,7 +12,7 @@ echo "🚀 Deploying Shroud Protocol to $CHAIN_NAME..."
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
 PROJECT_ROOT="$SCRIPT_DIR/.."
 CONTRACTS_DIR="$PROJECT_ROOT/contracts"
-ARTIFACT_PATH="$CONTRACTS_DIR/target/wasm32-unknown-unknown/release/shroud_protocol.wasm"
+ARTIFACT_PATH="$CONTRACTS_DIR/wasm/ShroudProtocol.wasm"
 
 # 1. Build Contracts
 echo "📦 Building contracts..."
@@ -40,17 +40,15 @@ casper-client put-transaction session \
     --node-address https://node.testnet.casper.network \
     --chain-name casper-test \
     --secret-key "$SECRET_KEY_PATH" \
-    --payment-amount 450000000000 \
+    --payment-amount 150000000000 \
     --gas-price-tolerance 1 \
     --standard-payment true \
     --install-upgrade \
     --wasm-path "$ARTIFACT_PATH" \
     --ttl "5min" \
-    --session-arg "odra_cfg_package_hash_key_name:opt_string='shroud_v10_package_hash'" \
+    --session-arg "odra_cfg_package_hash_key_name:opt_string='shroud_v11_package_hash'" \
     --session-arg "odra_cfg_allow_key_override:opt_bool='true'" \
-    --session-arg "odra_cfg_is_upgradable:opt_bool='true'" \
-    --session-arg "odra_cfg_is_upgrade:opt_bool='false'" \
-    --session-arg "name:opt_string='ShroudProtocol'"
+    --session-arg "odra_cfg_is_upgradable:opt_bool='false'"
 
 echo "⏳ Waiting for deployment..."
 # In a real script, we would query the node to get the deploy status and contract hash
