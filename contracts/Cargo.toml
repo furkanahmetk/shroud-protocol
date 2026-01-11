@@ -7,9 +7,19 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-odra = "0.9.0"
-casper-types = "3.0.0"
+odra = { version = "2.4.0", default-features = false, features = ["casper"] }
+casper-types = { version = "6.1.0", default-features = false }
 hex = { version = "0.4", default-features = false, features = ["alloc"] }
+base64ct = { version = "=1.6.0", default-features = false }
+casper-event-standard = { version = "0.7.0", default-features = false }
+
+[build-dependencies]
+odra-build = { version = "2.4.0", features = [], default-features = false }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+odra-build = { version = "2.4.0", features = [], default-features = false }
+odra-cli = { version = "2.4.0", features = [], default-features = false }
+
 # We might need these for crypto if not fully provided by Odra/Casper natively in the way we need
 ark-bn254 = { version = "0.4.0", default-features = false, features = ["curve"] }
 ark-ff = { version = "0.4.0", default-features = false }
@@ -17,7 +27,14 @@ ark-groth16 = { version = "0.4.0", default-features = false }
 ark-serialize = { version = "0.4.0", default-features = false }
 ark-std = { version = "0.4.0", default-features = false }
 
-[features]
-default = []
 
+[[bin]]
+name = "shroud_protocol_build_contract"
+path = "bin/build_contract.rs"
+test = false
+
+[[bin]]
+name = "shroud_protocol_build_schema"
+path = "bin/build_schema.rs"
+test = false
 

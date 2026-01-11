@@ -1,5 +1,5 @@
 use casper_types::U256;
-use odra::Address;
+use odra::prelude::Address;
 use ark_groth16::{Groth16, Proof, VerifyingKey};
 use ark_bn254::{Bn254, Fr};
 use ark_serialize::CanonicalDeserialize;

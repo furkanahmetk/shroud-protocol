@@ -1,6 +1,6 @@
 use odra::prelude::*;
-use casper_types::{U256, U512};
-use odra::{Address, Var, Mapping};
+use casper_types::{U256, U512, CLTyped};
+use casper_types::bytesrepr::{ToBytes, FromBytes};
 use crate::merkle_tree::MerkleTree;
 use crate::verifier::Verifier;
 
@@ -15,7 +15,9 @@ pub enum Error {
     InvalidProof = 5,
 }
 
-#[odra::module]
+
+
+#[odra::module(events = [Deposit, Withdrawal])]
 pub struct ShroudProtocol {
     pub merkle_tree: Var<MerkleTree>,
     pub commitments: Mapping<U256, bool>,

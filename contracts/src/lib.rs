@@ -6,5 +6,5 @@ pub mod verifier;
 
 pub use shroud_protocol::ShroudProtocol;
 
-// #[cfg(test)]
-// mod tests;
+
+

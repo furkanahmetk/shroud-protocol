@@ -1,4 +1,4 @@
-use odra::prelude::*;
+use odra::prelude::Vec;
 use casper_types::U256;
 use casper_types::bytesrepr::ToBytes;
 
@@ -81,7 +81,7 @@ fn hash_pair(left: U256, right: U256) -> U256 {
     input.extend_from_slice(&left.to_bytes().unwrap());
     input.extend_from_slice(&right.to_bytes().unwrap());
     
-    let hash = odra::casper_types::bytesrepr::Bytes::from(input);
+    // let hash = casper_types::bytesrepr::Bytes::from(input);
     // Odra/Casper doesn't expose MiMC natively.
     // We would need to implement the field arithmetic here.
     // Returning a dummy hash for now to allow compilation and logic testing.
