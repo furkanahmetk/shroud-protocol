@@ -6,9 +6,12 @@ Shroud Protocol is a privacy-preserving mixer built on the Casper Network. It al
 
 - **Privacy**: Uses ZK-SNARKs (Groth16) to prove ownership of funds without revealing the deposit source.
 - **Security**: Implements the MiMC7 hash function for efficient and secure in-circuit hashing.
+- **Robust Sync**: Features "On-Chain First" synchronization, pulling live data directly from the Casper blockchain and Explorer API for both CLI and Frontend.
+- **Automatic Backups**: Downloads a JSON secret key automatically after every deposit for maximum safety.
+- **Live Monitoring**: Real-time transaction feeds and global activity tracking on-chain.
 - **Non-Custodial**: Users maintain full control of their funds via a secret key.
-- **User-Friendly**: Includes a modern Web App and a CLI for advanced users.
-- **Developer-Ready**: Built with the Odra framework for robust smart contract development.
+- **User-Friendly**: Modern Web App with a "Cosmic" dark theme and a dedicated CLI.
+- **Developer-Ready**: Built with the Odra framework and optimized for Casper SDK v5.
 
 ## 🔒 How It Works
 
@@ -17,7 +20,8 @@ When you deposit CSPR, the protocol generates a digital "secret note" for you.
 - **Secret Generation**: Your browser generates two random numbers: a `secret` and a `nullifier`.
 - **Commitment**: These two numbers are hashed together to create a **Commitment**. Think of this as a sealed envelope containing your secret.
 - **On-Chain Transaction**: You send the Commitment and funds to the smart contract. The contract adds your commitment to a Merkle Tree but never sees your secret.
-- **User Action**: You receive a **Secret Key**. You must save this to withdraw later.
+- **User Action**: You receive a **Secret Key**. 
+    - **New**: The app automatically downloads this as a JSON file (`shroud-secret-*.json`) as soon as the transaction is submitted.
 
 ### 2. Withdraw (The "Unlocking" Phase)
 When you want to withdraw, you use your Secret Key to prove you own one of the deposits without revealing which one.
@@ -26,18 +30,18 @@ When you want to withdraw, you use your Secret Key to prove you own one of the d
 - **Nullifier**: The proof includes a Nullifier Hash to prevent double-spending.
 - **On-Chain Verification**: The smart contract verifies the proof and sends funds to the recipient, breaking the link between depositor and recipient.
 
-## � User Interface
+## 🖼️ User Interface
  
- The frontend features a **Premium Dark Theme** designed for a modern, immersive experience:
+The frontend features a **Premium Dark Theme** designed for a modern, immersive experience:
  
- - **Cosmic Aesthetic**: Deep black backgrounds with rich blue/purple mesh gradients.
- - **Glassmorphism**: Translucent cards and panels with subtle glowing borders.
- - **Interactive Elements**: Animated buttons, glowing text, and smooth transitions.
+- **Cosmic Aesthetic**: Deep black backgrounds with rich blue/purple mesh gradients.
+- **Glassmorphism**: Translucent cards and panels with subtle glowing borders.
+- **Interactive Elements**: Animated buttons, glowing text, and smooth transitions.
  
- ![Shroud Protocol UI](frontend/public/hero_shield_3d_1764582011240.png)
- *(Note: The above image is the 3D asset used in the Hero section)*
- 
- ## �🏗️ Architecture
+![Shroud Protocol Home](docs/img/docs_home_hq_1768312299757.png)
+![Shroud Protocol Activity](docs/img/docs_stats_hq_1768312374205.png)
+
+## 🏗️ Architecture
 
 The protocol consists of three main components:
 
@@ -149,16 +153,18 @@ The easiest way to use Shroud Protocol is via the web interface.
     - Click **"Connect Wallet"** in the top right.
     - Approve the connection in the popup.
 3.  **Deposit**:
-    - Go to the **Deposit** tab.
+    - Go to the **Deposit** tab and ensure your wallet is connected.
     - Click **"Deposit 100 CSPR"**.
     - Sign the transaction in your wallet.
-    - **IMPORTANT**: The app will display your **Secret Key** (JSON format). Copy and save it securely! You need this to withdraw.
+    - **AUTOMATIC BACKUP**: The secret key will be displayed on screen AND automatically downloaded to your computer as a JSON file. Keep it safe!
 4.  **Withdraw**:
     - Go to the **Withdraw** tab.
-    - Paste your **Secret Key JSON** into the text area.
-    - Enter the **Recipient Address** (a fresh address for privacy).
+    - Paste your **Secret Key JSON** or copy the values into the text area.
+    - Enter the **Recipient Address** (or click the wallet address to copy yours if needed).
     - Click **"Withdraw"**.
-    - The app will generate a Zero-Knowledge Proof (this may take a few seconds) and submit the transaction.
+    - The protocol will compute the ZK proof and authorize the release of funds to the fresh address.
+5.  **Monitor Activity**:
+    - Visit the **Statistics** page to see the global feed of deposits and withdrawals in real-time.
 
 #### 2. CLI (Advanced)
 
