@@ -52,3 +52,15 @@ casper_keys/
 
 # Git automation file
 .github/workflows/ci.yml
+
+# Local Dev Extras
+contracts/casper_livenet.env
+cli/cli_test_secret.json
+cli/.commitments_*.json
+cli/test_explorer.js
+cli/verify_root.js
+cli/test_rpc.js
+cli/test_sync.js
+cli/test_withdraw*.js
+cli/test_zk*.js
+cli/fetch_abort.js
