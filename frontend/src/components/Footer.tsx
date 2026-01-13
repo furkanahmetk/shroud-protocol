@@ -63,7 +63,7 @@ export default function Footer() {
                         <ul className="space-y-2 text-sm text-gray-500">
                             <li><a href="#" className="hover:text-brand-400 transition-colors">Discord</a></li>
                             <li><a href="#" className="hover:text-brand-400 transition-colors">Twitter</a></li>
-                            <li><a href="#" className="hover:text-brand-400 transition-colors">Telegram</a></li>
+                            <li><a href="https://t.me/shroud_protocol" target="_blank" rel="noopener noreferrer" className="hover:text-brand-400 transition-colors">Telegram</a></li>
                         </ul>
                     </div>
                 </div>

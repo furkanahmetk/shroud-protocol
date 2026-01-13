@@ -10,10 +10,29 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 import Footer from '@/components/Footer';
 import Navbar from '@/components/Navbar';
+import { CONTRACT_HASH } from '@/utils/casper';
+import { useEffect } from 'react';
 
 export default function Home() {
     const [activeTab, setActiveTab] = useState<'deposit' | 'withdraw'>('deposit');
+    const [stats, setStats] = useState({ deposits: 0, withdrawals: 0 });
     const { isConnected, activeKey } = useWallet();
+
+    useEffect(() => {
+        const loadStats = async () => {
+            try {
+                const { fetchProtocolActivity } = await import('@/utils/casper');
+                const data = await fetchProtocolActivity(CONTRACT_HASH);
+                setStats({
+                    deposits: data.deposits.length,
+                    withdrawals: data.withdrawals.length
+                });
+            } catch (e) {
+                console.error("Failed to load home stats:", e);
+            }
+        };
+        loadStats();
+    }, []);
 
     return (
         <div className="min-h-screen font-sans text-white selection:bg-brand-500/30 selection:text-brand-200 flex flex-col overflow-x-hidden">
@@ -61,18 +80,22 @@ export default function Home() {
                                 </Link>
                             </div>
 
-                            <div className="mt-12 grid grid-cols-3 gap-8 border-t border-white/10 pt-8">
+                            <div className="mt-12 grid grid-cols-2 md:grid-cols-4 gap-8 border-t border-white/10 pt-8">
                                 <div>
                                     <div className="text-3xl font-bold text-white">100</div>
-                                    <div className="text-sm text-gray-500 font-medium mt-1">CSPR / Deposit</div>
+                                    <div className="text-sm text-gray-500 font-medium mt-1 uppercase tracking-tighter">CSPR / Deposit</div>
+                                </div>
+                                <div>
+                                    <div className="text-3xl font-bold text-white">{stats.deposits + stats.withdrawals}</div>
+                                    <div className="text-sm text-gray-500 font-medium mt-1 uppercase tracking-tighter">Transactions</div>
                                 </div>
                                 <div>
                                     <div className="text-3xl font-bold text-white">Testnet</div>
-                                    <div className="text-sm text-gray-500 font-medium mt-1">Network</div>
+                                    <div className="text-sm text-gray-500 font-medium mt-1 uppercase tracking-tighter">Network</div>
                                 </div>
                                 <div>
                                     <div className="text-3xl font-bold text-white">~2 min</div>
-                                    <div className="text-sm text-gray-500 font-medium mt-1">Avg. Time</div>
+                                    <div className="text-sm text-gray-500 font-medium mt-1 uppercase tracking-tighter">Avg. Time</div>
                                 </div>
                             </div>
                         </div>

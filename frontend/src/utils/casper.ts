@@ -295,53 +295,57 @@ const explorerCall = async (path: string) => {
     return await response.json();
 };
 
-export const fetchContractEvents = async (contractHash: string) => {
-    console.log('[Casper] Synchronizing commitments for contract:', contractHash);
-    let commitments: string[] = [];
+// Helper to get the main purse of the contract
+const getMainPurse = async (contractHash: string): Promise<string> => {
+    // Default fallback
+    let mainPurse = 'uref-3c4011cbd1c0d58793d9435fab15abb24faee31e3546d2e81c011cce6ed73047-007';
 
-    // 1. Try Explorer API First (Most reliable for historical data)
     try {
-        console.log('[Casper] Attempting Explorer sync...');
+        const stateRootRes = await rpcCall('chain_get_state_root_hash', []);
+        const stateRootHash = stateRootRes.state_root_hash;
+        const formattedHash = contractHash.startsWith('hash-') ? contractHash : `hash-${contractHash}`;
+        const contractData = await rpcCall('state_get_item', {
+            state_root_hash: stateRootHash,
+            key: formattedHash,
+            path: []
+        });
 
-        // We need the main purse to track deposits. 
-        let mainPurse = 'uref-3c4011cbd1c0d58793d9435fab15abb24faee31e3546d2e81c011cce6ed73047-007';
-
-        try {
-            const stateRootRes = await rpcCall('chain_get_state_root_hash', []);
-            const stateRootHash = stateRootRes.state_root_hash;
-            const formattedHash = contractHash.startsWith('hash-') ? contractHash : `hash-${contractHash}`;
-            const contractData = await rpcCall('state_get_item', {
+        let namedKeys: any[] = [];
+        if (contractData.stored_value?.Contract) {
+            namedKeys = contractData.stored_value.Contract.named_keys;
+        } else if (contractData.stored_value?.ContractPackage) {
+            const newest = contractData.stored_value.ContractPackage.versions.slice(-1)[0].contract_hash;
+            const realContractData = await rpcCall('state_get_item', {
                 state_root_hash: stateRootHash,
-                key: formattedHash,
+                key: newest,
                 path: []
             });
-
-            let namedKeys: any[] = [];
-            if (contractData.stored_value?.Contract) {
-                namedKeys = contractData.stored_value.Contract.named_keys;
-            } else if (contractData.stored_value?.ContractPackage) {
-                const newest = contractData.stored_value.ContractPackage.versions.slice(-1)[0].contract_hash;
-                const realContractData = await rpcCall('state_get_item', {
-                    state_root_hash: stateRootHash,
-                    key: newest,
-                    path: []
-                });
-                namedKeys = realContractData.stored_value.Contract.named_keys;
-            }
-            const foundPurse = namedKeys.find((k: any) => k.name === '__contract_main_purse')?.key;
-            if (foundPurse) mainPurse = foundPurse;
-        } catch (e) {
-            console.warn('[Casper] Metadata fetch failed, using hardcoded purse fallback.');
+            namedKeys = realContractData.stored_value.Contract.named_keys;
         }
+        const foundPurse = namedKeys.find((k: any) => k.name === '__contract_main_purse')?.key;
+        if (foundPurse) mainPurse = foundPurse;
+    } catch (e) {
+        console.warn('[Casper] Metadata fetch failed, using purse fallback.');
+    }
+    return mainPurse;
+};
 
+/**
+ * Fetch all protocol activity (deposits and withdrawals)
+ */
+export const fetchProtocolActivity = async (contractHash: string) => {
+    const commitments: string[] = [];
+    const withdrawalsByHash = new Map<string, any>();
+
+    try {
+        const mainPurse = await getMainPurse(contractHash);
         console.log(`[Casper] Fetching transfers for purse: ${mainPurse}`);
 
-        // Handle pagination to ensure we get ALL historical transfers
         let allTransfers: any[] = [];
         let page = 1;
         let hasMore = true;
 
-        while (hasMore && page <= 10) { // Safety cap at 1000 transfers
+        while (hasMore && page <= 10) {
             const response = await explorerCall(`/purses/${mainPurse}/transfers?page_size=100&page=${page}`);
             const data = response.data || [];
             allTransfers = [...allTransfers, ...data];
@@ -349,58 +353,64 @@ export const fetchContractEvents = async (contractHash: string) => {
             page++;
         }
 
-        // 2. Sort transfers by timestamp ASCENDING (Older first = smaller tree indices)
-        // This is CRITICAL for Merkle Tree consistency
         allTransfers.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
-        const deployHashes = allTransfers.map((t: any) => t.deploy_hash);
-        const uniqueHashes = Array.from(new Set(deployHashes)) as string[];
-
+        const uniqueHashes = Array.from(new Set(allTransfers.map((t: any) => t.deploy_hash))) as string[];
         console.log(`[Casper] Processing ${uniqueHashes.length} unique successful transfers...`);
 
-        // 3. Extract commitments from deploys
         for (const hash of uniqueHashes) {
             try {
                 const deploy = await explorerCall(`/deploys/${hash}`);
-                // Correct success check for Explorer API
                 const data = deploy.data;
                 const success = data?.status === 'processed' && !data?.error_message;
                 if (!success) continue;
 
-                // Robust extraction: Check multiple paths for the 'commitment' argument
-                // Confirmed path: data.args.commitment.parsed
                 const args = data?.args || data?.session?.args || data?.session?.StoredContractByHash?.args;
 
-                let commitmentValue: any = null;
-
                 if (args) {
-                    if (args.commitment) {
-                        commitmentValue = args.commitment.parsed;
-                    } else if (Array.isArray(args)) {
-                        const found = args.find((a: any) => a.name === 'commitment' || a[0] === 'commitment');
-                        commitmentValue = found?.parsed || (Array.isArray(found) ? found[1]?.parsed : null);
+                    // Identify Deposit
+                    const commitmentValue = args.commitment?.parsed ||
+                        (Array.isArray(args) ? args.find((a: any) => a.name === 'commitment' || a[0] === 'commitment')?.parsed : null);
+
+                    if (commitmentValue) {
+                        commitments.push(commitmentValue.toString());
+                        continue;
+                    }
+
+                    // Identify Withdrawal (if no commitment, check nullifier_hash or entry_point)
+                    const nullifierValue = args.nullifier_hash?.parsed ||
+                        (Array.isArray(args) ? args.find((a: any) => a.name === 'nullifier_hash' || a[0] === 'nullifier_hash')?.parsed : null);
+
+                    if (nullifierValue || data?.entry_point === 'withdraw' || data?.session?.StoredVersionedContractByHash?.entry_point === 'withdraw') {
+                        withdrawalsByHash.set(hash, {
+                            hash: hash,
+                            timestamp: data.timestamp,
+                            nullifier: nullifierValue?.toString() || 'unknown',
+                            recipient: args.recipient?.parsed || 'unknown'
+                        });
                     }
                 }
-
-                if (commitmentValue) {
-                    commitments.push(commitmentValue.toString());
-                } else {
-                    console.warn(`[Casper] Could not find commitment arg in deploy ${hash}`);
-                }
             } catch (e) {
-                console.warn(`[Casper] Failed to fetch deploy ${hash}:`, e);
+                console.warn(`[Casper] Failed to fetch activity for deploy ${hash}:`, e);
             }
         }
-
-        if (commitments.length > 0) {
-            console.log(`[Casper] Successfully recovered ${commitments.length} commitments in chronological order.`);
-            return commitments;
-        }
     } catch (e: any) {
-        console.warn('[Casper] Explorer sync failed:', e.message);
+        console.warn('[Casper] Explorer activity sync failed:', e.message);
     }
-    // ... (rest of the fallbacks if needed)
-    return commitments;
+
+    return {
+        deposits: commitments,
+        withdrawals: Array.from(withdrawalsByHash.values()).sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    };
+};
+
+/**
+ * Legacy wrapper for Merkle Tree sync (deposits only)
+ */
+export const fetchContractEvents = async (contractHash: string): Promise<string[]> => {
+    console.log('[Casper] Synchronizing commitments for Merkle Tree...');
+    const activity = await fetchProtocolActivity(contractHash);
+    return activity.deposits;
 };
 
 const NETWORK_NAME = process.env.NEXT_PUBLIC_NETWORK_NAME || 'casper-test';
