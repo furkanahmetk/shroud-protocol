@@ -80,7 +80,13 @@ npm run dev
 # Open http://localhost:3000
 ```
 
-## 5. Troubleshooting
+## 5. Post-Deployment Verification
+
+After deploying, visit the **Statistics** page to verify the contract is active and syncing correctly:
+
+![Statistics Success State](docs/img/docs_stats_hq_1768312374205.png)
+
+## 6. Troubleshooting
 
 ### "Module doesn't have export call"
 Ensure `contracts/build.rs` exists and contains the ODRA_MODULE forwarding logic.

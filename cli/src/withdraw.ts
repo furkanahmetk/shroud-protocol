@@ -17,21 +17,26 @@ export async function withdrawCommand(
     const { nullifier, secret, commitment, leafIndex } = await crypto.loadSecrets(secretsFile);
 
     console.log('🌳 Reconstructing Merkle Tree...');
+    const blockchain = new BlockchainClient(nodeUrl, contractHash);
 
-    // Load all commitments from local cache to rebuild the tree exactly as the contract has it
-    const allCommitments = await crypto.loadCommitmentsFromCache(contractHash);
-    console.log(`   Found ${allCommitments.length} commitments in local cache`);
+    // 🔎 ON-CHAIN SYNC: Fetch commitments directly from blockchain to ensure matching root
+    const allCommitments = await blockchain.getDeposits();
 
     let pathElements: bigint[];
     let pathIndices: number[];
     let root: bigint;
     let actualIndex: number;
 
-    // Check if our commitment is in the cache
+    // Check if our commitment is in the fetched data
     const ourIndex = allCommitments.findIndex(c => c === commitment);
 
-    if (ourIndex !== -1 && allCommitments.length > 0) {
-        // Rebuild tree with all real commitments from cache
+    if (allCommitments.length > 0) {
+        console.log(`   📝 Found ${allCommitments.length} on-chain commitments`);
+        console.log(`   📌 First 5: ${allCommitments.slice(0, 5).map(c => c.toString(16).substring(0, 8)).join(', ')}...`);
+    }
+
+    if (ourIndex !== -1) {
+        // Rebuild tree with all real commitments from blockchain
         const tree = crypto.createMerkleTree();
         for (const c of allCommitments) {
             tree.insert(c);
@@ -42,10 +47,10 @@ export async function withdrawCommand(
         pathIndices = path.pathIndices;
         root = tree.getRoot();
         actualIndex = ourIndex;
-        console.log(`   ✅ Using cached commitments (index: ${actualIndex})`);
+        console.log(`   ✅ Synced with blockchain (index: ${actualIndex})`);
     } else {
-        // Fallback: use stored leafIndex with placeholder zeros (works only for first deposit)
-        console.log('   ⚠️ Commitment not found in cache, using stored leafIndex');
+        // Fallback for very new deposits that might not have indexed yet
+        console.log('   ⚠️ Commitment not found on-chain, using cached leafIndex fallback');
         const tree = crypto.createMerkleTree();
         for (let i = 0; i < leafIndex; i++) {
             tree.insert(0n);
@@ -62,6 +67,18 @@ export async function withdrawCommand(
     console.log(`   Leaf index: ${actualIndex}`);
     console.log(`   Root: ${root.toString(16).substring(0, 16)}...`);
 
+    // Deriving recipient numeric input for circuit (Account Hash)
+    let recipientNumeric: bigint;
+    try {
+        const { CLPublicKey } = require('casper-js-sdk');
+        const pubKey = CLPublicKey.fromHex(recipientAddress);
+        const hash = pubKey.accountHash();
+        recipientNumeric = BigInt('0x' + Buffer.from(hash).toString('hex'));
+    } catch (e) {
+        // Fallback for hex strings
+        recipientNumeric = BigInt(recipientAddress.startsWith('0x') ? recipientAddress : '0x' + recipientAddress);
+    }
+
     console.log('⚡ Generating Zero-Knowledge Proof...');
     const input = {
         nullifier: nullifier,
@@ -70,7 +87,7 @@ export async function withdrawCommand(
         pathIndices: pathIndices,
         root: root,
         nullifierHash: crypto.computeNullifierHash(nullifier),
-        recipient: BigInt(recipientAddress.startsWith('0x') ? recipientAddress : '0x' + recipientAddress),
+        recipient: recipientNumeric,
         relayer: 0n,
         fee: 0n
     };
@@ -85,7 +102,6 @@ export async function withdrawCommand(
     const proofBytes = new Uint8Array(Buffer.from(JSON.stringify(proof)));
 
     console.log('\n💸 Submitting withdrawal transaction...');
-    const blockchain = new BlockchainClient(nodeUrl, contractHash);
 
     const deployHash = await blockchain.withdraw(
         proofBytes,
