@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { ArrowDownCircle, Copy, Check } from 'lucide-react';
 import { CryptoUtils } from '../utils/crypto';
-import { createDepositTransaction, createDepositSessionTransaction, sendSignedTransaction, CONTRACT_HASH } from '../utils/casper';
+import { createDepositSessionTransaction, createDepositSessionTransaction as _deprecated, sendSignedTransaction, CONTRACT_HASH } from '../utils/casper';
 import { useWallet } from '../hooks/useWallet';
+import { useCommitment } from '../context/CommitmentContext';
 
 interface DepositProps {
     isConnected: boolean;
@@ -15,6 +16,7 @@ export default function Deposit({ isConnected, activeKey }: DepositProps) {
     const [secret, setSecret] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
     const { signTransaction, balance } = useWallet();
+    const { isSyncing } = useCommitment();
 
     const handleDeposit = async () => {
         if (!isConnected || !activeKey) return;
@@ -146,7 +148,7 @@ export default function Deposit({ isConnected, activeKey }: DepositProps) {
             ) : (
                 <button
                     onClick={handleDeposit}
-                    disabled={isProcessing || !isConnected}
+                    disabled={isProcessing || isSyncing || !isConnected}
                     className="w-full py-4 btn-primary rounded-xl flex justify-center items-center group disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     {isProcessing ? (
@@ -156,6 +158,8 @@ export default function Deposit({ isConnected, activeKey }: DepositProps) {
                         </span>
                     ) : !isConnected ? (
                         <span>Connect Wallet to Deposit</span>
+                    ) : isSyncing ? (
+                        <span className="animate-pulse">Using Global Sync...</span>
                     ) : (
                         <>
                             <ArrowDownCircle className="w-5 h-5 mr-2 group-hover:animate-bounce" />
