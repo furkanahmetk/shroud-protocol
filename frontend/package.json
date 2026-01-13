@@ -11,6 +11,7 @@
     "dependencies": {
         "@fontsource/fira-code": "^5.2.7",
         "@fontsource/inter": "^5.2.8",
+        "blakejs": "^1.2.1",
         "casper-js-sdk": "^5.0.8",
         "circomlibjs": "^0.1.7",
         "clsx": "^2.1.1",

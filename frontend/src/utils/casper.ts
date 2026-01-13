@@ -1,14 +1,8 @@
-/**
- * Casper SDK v5 utilities for Shroud Protocol
- * Uses Transaction API (v2) for Casper Wallet compatibility
- */
 import {
     PublicKey,
     Args,
     CLValue,
     ContractCallBuilder,
-    HttpHandler,
-    RpcClient,
     Transaction,
     SessionBuilder,
     Deploy,
@@ -17,16 +11,398 @@ import {
     Duration,
     ModuleBytes,
     StoredContractByHash,
-    StoredVersionedContractByHash,
+    Contract,
+    RpcClient,
+    HttpHandler,
+    Key, // Use Key instead of CLKey
+    KeyTypeID,
+    AccountHash, // Use AccountHash
+    // CLPublicKey,
+    // CLByteArray,
+    CLTypeUInt8,
     ContractHash,
+    StoredVersionedContractByHash,
     Approval,
     Timestamp,
-    Key,
-    KeyTypeID,
-    CLTypeUInt8,
+    // Add other types as needed
 } from 'casper-js-sdk';
+import blake from 'blakejs';
 
-const NODE_URL = process.env.NEXT_PUBLIC_NODE_URL || 'https://node.testnet.casper.network/rpc';
+// Use proxy to avoid CORS in browser
+const NODE_URL = typeof window !== 'undefined' ? '/api/proxy' : 'https://node.testnet.casper.network/rpc';
+
+// Helper to make raw RPC calls
+const rpcCall = async (method: string, params: any) => {
+    // Use local proxy to avoid CORS
+    const response = await fetch('/api/proxy', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: new Date().getTime(),
+            method,
+            params
+        }),
+    });
+    const data = await response.json();
+    if (data.error) {
+        throw new Error(data.error.message);
+    }
+    return data.result;
+};
+
+// Helper: Convert bytes/Hash to hex
+const toHex = (bytes: Uint8Array | any): string => {
+    if (!bytes) return '';
+    if (typeof bytes === 'string') return bytes;
+    if (bytes.toHex) return bytes.toHex();
+    if (bytes instanceof Uint8Array || (bytes.buffer && bytes.length !== undefined)) {
+        return Buffer.from(bytes).toString('hex');
+    }
+    return String(bytes);
+};
+
+// Helper to compute dictionary key
+function getDictionaryItemKey(urefStr: string, index: number, mode: number = 0): string {
+    const parts = urefStr.split('-');
+    const urefHex = parts[1];
+    const rightsVal = parseInt(parts[2], 8);
+
+    // decodeBase16 replacement
+    const urefBytes = new Uint8Array(Buffer.from(urefHex, 'hex'));
+    const rightsByte = new Uint8Array([rightsVal]);
+
+    // Key Bytes
+    const keyBuf4 = new Uint8Array(4); // u32 LE
+    new DataView(keyBuf4.buffer).setUint32(0, index, true);
+
+    // Tagged Key (CLValue tag for U32 is 4)
+    const keyBufTag = new Uint8Array(5);
+    keyBufTag[0] = 4;
+    keyBufTag.set(keyBuf4, 1);
+
+    const indexStr = index.toString();
+    const keyBufString = new TextEncoder().encode(indexStr);
+
+    let seed: Uint8Array;
+    let key: Uint8Array;
+
+    // Modes based on my brute force strategy
+    if (mode === 0) {
+        seed = new Uint8Array([...urefBytes, ...rightsByte]);
+        key = keyBuf4;
+    }
+    else if (mode === 1) {
+        seed = urefBytes;
+        key = keyBuf4;
+    }
+    else if (mode === 2) {
+        seed = new Uint8Array([...urefBytes, ...rightsByte]);
+        key = keyBufTag;
+    }
+    else {
+        seed = urefBytes;
+        key = keyBufString;
+    }
+
+    const ctx = blake.blake2bInit(32);
+    blake.blake2bUpdate(ctx, seed);
+    blake.blake2bUpdate(ctx, key);
+    return Buffer.from(blake.blake2bFinal(ctx)).toString('hex');
+}
+
+// Helper: Convert CLValue to Legacy JSON format { cl_type, bytes, parsed }
+const toLegacyCLValueJson = (clValue: CLValue | any): any => {
+    if (!clValue) return null;
+
+    // Already in legacy format
+    if (clValue?.cl_type && clValue?.bytes !== undefined) return clValue;
+
+    const typeName = clValue?.type?.typeName;
+
+    const getBytes = (): Uint8Array => {
+        if (typeof clValue.bytes === 'function') {
+            return clValue.bytes();
+        }
+        // Fallback for some v5 objects that might have changed internal structure
+        if (clValue.data) return clValue.data;
+        return new Uint8Array(0);
+    };
+
+    // Handle numeric types (U8, U32, U64, U128, U256, U512)
+    if (typeName && ['U8', 'U32', 'U64', 'U128', 'U256', 'U512'].includes(typeName)) {
+        return {
+            cl_type: typeName,
+            bytes: toHex(getBytes()),
+            parsed: clValue.toString()
+        };
+    }
+
+    // Handle ByteArray
+    if (clValue?.type?.size !== undefined) {
+        return {
+            cl_type: { ByteArray: clValue.type.size },
+            bytes: toHex(getBytes()),
+            parsed: toHex(getBytes())
+        };
+    }
+
+    // Handle PublicKey
+    if (typeName === 'PublicKey' || clValue?.toHex) {
+        const hex = clValue.toHex ? clValue.toHex() : toHex(getBytes());
+        return {
+            cl_type: 'PublicKey',
+            bytes: hex,
+            parsed: hex
+        };
+    }
+
+    // Handle Key type
+    if (typeName === 'Key') {
+        const bytes = getBytes();
+        return {
+            cl_type: 'Key',
+            bytes: toHex(bytes),
+            parsed: clValue.toString ? clValue.toString() : toHex(bytes)
+        };
+    }
+
+    // Handle List
+    if (typeName === 'List') {
+        const listData = clValue.data || clValue.value() || [];
+        const innerType = clValue.type.inner.typeName;
+        return {
+            cl_type: { List: innerType },
+            bytes: toHex(getBytes()),
+            parsed: listData.map((item: any) => toLegacyCLValueJson(item))
+        };
+    }
+
+    // Handle String
+    if (typeName === 'String') {
+        return {
+            cl_type: 'String',
+            bytes: toHex(getBytes()),
+            parsed: clValue.toString()
+        };
+    }
+
+    // Handle Boolean
+    if (typeName === 'Bool') {
+        return {
+            cl_type: 'Bool',
+            bytes: toHex(getBytes()),
+            parsed: clValue.toString() === 'true'
+        };
+    }
+
+    // Fallback: try toJSON if available
+    if (typeof clValue.toJSON === 'function') {
+        const json = clValue.toJSON();
+        if (json && json.cl_type) return json;
+    }
+
+    return clValue?.toString ? clValue.toString() : null;
+};
+
+const executableDeployItemToJson = (item: ExecutableDeployItem | any): any => {
+    if (item.moduleBytes) {
+        const argsMap = new Map();
+        // SDK v5 Args.args is a Map
+        item.moduleBytes.args.args.forEach((val: any, key: any) => {
+            argsMap.set(key, toLegacyCLValueJson(val));
+        });
+        return {
+            ModuleBytes: {
+                module_bytes: toHex(item.moduleBytes.moduleBytes),
+                args: Array.from(argsMap.entries())
+            }
+        };
+    }
+    if (item.storedContractByHash) {
+        const argsMap = new Map();
+        item.storedContractByHash.args.args.forEach((val: any, key: any) => {
+            argsMap.set(key, toLegacyCLValueJson(val));
+        });
+        return {
+            StoredContractByHash: {
+                hash: toHex(item.storedContractByHash.hash),
+                entry_point: item.storedContractByHash.entryPoint,
+                args: Array.from(argsMap.entries())
+            }
+        };
+    }
+    if (item.storedVersionedContractByHash) {
+        const argsMap = new Map();
+        item.storedVersionedContractByHash.args.args.forEach((val: any, key: any) => {
+            argsMap.set(key, toLegacyCLValueJson(val));
+        });
+        return {
+            StoredVersionedContractByHash: {
+                hash: toHex(item.storedVersionedContractByHash.hash.data), // ContractHash has .data
+                version: item.storedVersionedContractByHash.version,
+                entry_point: item.storedVersionedContractByHash.entryPoint,
+                args: Array.from(argsMap.entries())
+            }
+        };
+    }
+    // Handle Transfer if needed, usually ModuleBytes for us
+    return {};
+};
+
+const argsToJson = (args: Args): any[] => {
+    const result: any[] = [];
+    const internalMap = (args as any).args;
+
+    if (internalMap && typeof internalMap.entries === 'function') {
+        try {
+            const entries = Array.from(internalMap.entries()) as [any, any][];
+            for (const entry of entries) {
+                const key = entry[0];
+                const value = entry[1];
+
+                // Debug logging to help identify serialization issues
+                // console.log(`[argsToJson] Key: ${key}, Value type: ${value?.type?.typeName || value?.constructor?.name}`);
+
+                let json = toLegacyCLValueJson(value);
+
+                // Ensure we never have undefined in the result
+                if (json === undefined || json === null) {
+                    // console.warn(`[argsToJson] Warning: CLValue for key "${key}" serialized to null/undefined`);
+                    // Try a more aggressive fallback
+                    json = value?.toString ? value.toString() : String(value);
+                }
+
+                // console.log(`[argsToJson] Serialized ${key}:`, JSON.stringify(json));
+                result.push([key, json]);
+            }
+        } catch (e) {
+            console.error("argsToJson: Error iterating args map", e);
+        }
+    } else {
+        console.warn("[argsToJson] Args map is not iterable:", args);
+    }
+    return result;
+};
+
+const explorerCall = async (path: string) => {
+    const response = await fetch(`/api/proxy?useExplorer=true&path=${encodeURIComponent(path)}`, {
+        method: 'GET'
+    });
+    if (!response.ok) throw new Error(`Explorer API failed: ${response.status}`);
+    return await response.json();
+};
+
+export const fetchContractEvents = async (contractHash: string) => {
+    console.log('[Casper] Synchronizing commitments for contract:', contractHash);
+    let commitments: string[] = [];
+
+    // 1. Try Explorer API First (Most reliable for historical data)
+    try {
+        console.log('[Casper] Attempting Explorer sync...');
+
+        // We need the main purse to track deposits. 
+        let mainPurse = 'uref-3c4011cbd1c0d58793d9435fab15abb24faee31e3546d2e81c011cce6ed73047-007';
+
+        try {
+            const stateRootRes = await rpcCall('chain_get_state_root_hash', []);
+            const stateRootHash = stateRootRes.state_root_hash;
+            const formattedHash = contractHash.startsWith('hash-') ? contractHash : `hash-${contractHash}`;
+            const contractData = await rpcCall('state_get_item', {
+                state_root_hash: stateRootHash,
+                key: formattedHash,
+                path: []
+            });
+
+            let namedKeys: any[] = [];
+            if (contractData.stored_value?.Contract) {
+                namedKeys = contractData.stored_value.Contract.named_keys;
+            } else if (contractData.stored_value?.ContractPackage) {
+                const newest = contractData.stored_value.ContractPackage.versions.slice(-1)[0].contract_hash;
+                const realContractData = await rpcCall('state_get_item', {
+                    state_root_hash: stateRootHash,
+                    key: newest,
+                    path: []
+                });
+                namedKeys = realContractData.stored_value.Contract.named_keys;
+            }
+            const foundPurse = namedKeys.find((k: any) => k.name === '__contract_main_purse')?.key;
+            if (foundPurse) mainPurse = foundPurse;
+        } catch (e) {
+            console.warn('[Casper] Metadata fetch failed, using hardcoded purse fallback.');
+        }
+
+        console.log(`[Casper] Fetching transfers for purse: ${mainPurse}`);
+
+        // Handle pagination to ensure we get ALL historical transfers
+        let allTransfers: any[] = [];
+        let page = 1;
+        let hasMore = true;
+
+        while (hasMore && page <= 10) { // Safety cap at 1000 transfers
+            const response = await explorerCall(`/purses/${mainPurse}/transfers?page_size=100&page=${page}`);
+            const data = response.data || [];
+            allTransfers = [...allTransfers, ...data];
+            hasMore = data.length === 100;
+            page++;
+        }
+
+        // 2. Sort transfers by timestamp ASCENDING (Older first = smaller tree indices)
+        // This is CRITICAL for Merkle Tree consistency
+        allTransfers.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+        const deployHashes = allTransfers.map((t: any) => t.deploy_hash);
+        const uniqueHashes = Array.from(new Set(deployHashes)) as string[];
+
+        console.log(`[Casper] Processing ${uniqueHashes.length} unique successful transfers...`);
+
+        // 3. Extract commitments from deploys
+        for (const hash of uniqueHashes) {
+            try {
+                const deploy = await explorerCall(`/deploys/${hash}`);
+                // Correct success check for Explorer API
+                const data = deploy.data;
+                const success = data?.status === 'processed' && !data?.error_message;
+                if (!success) continue;
+
+                // Robust extraction: Check multiple paths for the 'commitment' argument
+                // Confirmed path: data.args.commitment.parsed
+                const args = data?.args || data?.session?.args || data?.session?.StoredContractByHash?.args;
+
+                let commitmentValue: any = null;
+
+                if (args) {
+                    if (args.commitment) {
+                        commitmentValue = args.commitment.parsed;
+                    } else if (Array.isArray(args)) {
+                        const found = args.find((a: any) => a.name === 'commitment' || a[0] === 'commitment');
+                        commitmentValue = found?.parsed || (Array.isArray(found) ? found[1]?.parsed : null);
+                    }
+                }
+
+                if (commitmentValue) {
+                    commitments.push(commitmentValue.toString());
+                } else {
+                    console.warn(`[Casper] Could not find commitment arg in deploy ${hash}`);
+                }
+            } catch (e) {
+                console.warn(`[Casper] Failed to fetch deploy ${hash}:`, e);
+            }
+        }
+
+        if (commitments.length > 0) {
+            console.log(`[Casper] Successfully recovered ${commitments.length} commitments in chronological order.`);
+            return commitments;
+        }
+    } catch (e: any) {
+        console.warn('[Casper] Explorer sync failed:', e.message);
+    }
+    // ... (rest of the fallbacks if needed)
+    return commitments;
+};
+
 const NETWORK_NAME = process.env.NEXT_PUBLIC_NETWORK_NAME || 'casper-test';
 export const CONTRACT_HASH = process.env.NEXT_PUBLIC_CONTRACT_HASH || 'eab05369d5f955239217e3bf2d11d15b996bbb14c7138812591eb2347dfeba4b';
 
@@ -35,9 +411,13 @@ export const getContractHash = (): string => {
     return CONTRACT_HASH.startsWith('hash-') ? CONTRACT_HASH.slice(5) : CONTRACT_HASH;
 };
 
-/**
- * Create a deposit transaction using session WASM (required for CSPR transfer)
- */
+// Helper: Get Account Hash hex from Public Key hex
+export const getAccountHash = (publicKeyHex: string): string => {
+    const pk = PublicKey.fromHex(publicKeyHex);
+    return pk.accountHash().toHex();
+};
+
+// Create a deposit transaction using session WASM (required for CSPR transfer)
 export const createDepositSessionTransaction = (
     activeKey: string,
     commitment: bigint,
@@ -53,7 +433,7 @@ export const createDepositSessionTransaction = (
         amount: CLValue.newCLUInt512(amount.toString())
     });
 
-    const paymentAmount = 150_000_000_000; // 150 CSPR - increased for complex WASM execution
+    const paymentAmount = 150_000_000_000; // 150 CSPR
 
     const deployParams = new DeployHeader();
     deployParams.account = senderKey;
@@ -81,13 +461,11 @@ export const createDepositTransaction = (
     commitment: bigint,
     amount: bigint
 ): Deploy => {
-    // Fallback - won't work for transfer, but keeps API compatible
     return createDepositSessionTransaction(activeKey, commitment, amount, new Uint8Array(0));
 };
 
 /**
  * Create a withdraw transaction using SDK v5 ContractCallBuilder
- * Uses Key type for recipient and List[U8] for proof (matching CLI)
  */
 export const createWithdrawTransaction = (
     activeKey: string,
@@ -99,18 +477,14 @@ export const createWithdrawTransaction = (
     const senderKey = PublicKey.fromHex(activeKey);
     const recipientKey = PublicKey.fromHex(recipient);
 
-    // Create Key from PublicKey's account hash using prefixed string format
-    // This ensures proper serialization (Key.newKey properly populates the 'account' property)
-    const recipientAccountKey = Key.newKey(recipientKey.accountHash().toPrefixedString());
-
-    // Create List<U8> for proof (matches CLI: CLValueBuilder.list(Array.from(proof).map(b => CLValueBuilder.u8(b))))
+    // Create List<U8> for proof
     const proofList = Array.from(proof).map(b => CLValue.newCLUint8(b));
 
     const args = Args.fromMap({
         proof: CLValue.newCLList(CLTypeUInt8, proofList),
         root: CLValue.newCLUInt256(root.toString()),
         nullifier_hash: CLValue.newCLUInt256(nullifierHash.toString()),
-        recipient: CLValue.newCLKey(recipientAccountKey),
+        recipient: CLValue.newCLKey(Key.createByType(recipientKey.accountHash().toHex(), KeyTypeID.Account)),
     });
 
     const deployParams = new DeployHeader();
@@ -121,29 +495,16 @@ export const createWithdrawTransaction = (
     deployParams.ttl = new Duration(1800000);
 
     const session = new ExecutableDeployItem();
-    // StoredVersionedContractByHash(hash, entryPoint, args, version)
-    // We must pass null explicitly so it appears in the JSON, otherwise wallet throws "arg not valid"
     session.storedVersionedContractByHash = new StoredVersionedContractByHash(
         ContractHash.newContract(getContractHash()),
-        'withdraw',
+        'withdraw', // entry_point
         args,
-        null as any // Force null to be serialized
+        undefined // version
     );
 
-    const payment = ExecutableDeployItem.standardPayment('100000000000'); // 100 CSPR for complex ZK verification
+    const payment = ExecutableDeployItem.standardPayment('100000000000'); // 100 CSPR
 
     return Deploy.makeDeploy(deployParams, payment, session);
-};
-
-// Helper: Convert bytes/Hash to hex
-const toHex = (bytes: Uint8Array | any): string => {
-    if (!bytes) return '';
-    if (typeof bytes === 'string') return bytes;
-    if (bytes.toHex) return bytes.toHex();
-    if (bytes instanceof Uint8Array || (bytes.buffer && bytes.length !== undefined)) {
-        return Buffer.from(bytes).toString('hex');
-    }
-    return String(bytes);
 };
 
 // Helper: Serialize Deploy to Legacy JSON format
@@ -169,51 +530,27 @@ export const deployToLegacyJson = (deploy: Deploy): any => {
     };
 };
 
-/**
- * Send a signed transaction to the network
- * Uses local proxy to avoid CORS issues
- */
 export const sendSignedTransaction = async (signedTransaction: Transaction | Deploy): Promise<string> => {
     console.log('[sendSignedTransaction] Starting submission...');
 
     if (signedTransaction instanceof Transaction) {
-        // For Transaction v2, use account_put_transaction 
         const txJson = signedTransaction.toJSON();
         const result = await rpcCall('account_put_transaction', { transaction: txJson });
         console.log('[sendSignedTransaction] Transaction result:', result);
         return result.transaction_hash?.toString() || result.transactionHash?.toString();
     } else {
-        // For Legacy Deploy, use account_put_deploy
         const deployJson = Deploy.toJSON(signedTransaction) as any;
-        console.log('[sendSignedTransaction] Submitting deploy via proxy:', deployJson?.hash);
-        console.log('[sendSignedTransaction] Deploy Approvals:', JSON.stringify(deployJson?.approvals));
 
+        if (deployJson.session?.StoredVersionedContractByHash &&
+            deployJson.session.StoredVersionedContractByHash.version === undefined) {
+            deployJson.session.StoredVersionedContractByHash.version = null;
+        }
+
+        console.log('[sendSignedTransaction] Submitting deploy via proxy:', deployJson?.hash);
         const result = await rpcCall('account_put_deploy', { deploy: deployJson });
         console.log('[sendSignedTransaction] Deploy result:', result);
         return result.deploy_hash || result.deployHash;
     }
-};
-
-// Helper to make raw RPC calls
-const rpcCall = async (method: string, params: any) => {
-    // Use local proxy to avoid CORS
-    const response = await fetch('/api/proxy', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            jsonrpc: '2.0',
-            id: new Date().getTime(),
-            method,
-            params
-        }),
-    });
-    const data = await response.json();
-    if (data.error) {
-        throw new Error(data.error.message);
-    }
-    return data.result;
 };
 
 /**
@@ -221,22 +558,16 @@ const rpcCall = async (method: string, params: any) => {
  */
 export const getBalance = async (publicKeyHex: string): Promise<string> => {
     try {
-        // 1. Get State Root Hash
         const stateRootResult = await rpcCall('chain_get_state_root_hash', []);
         const stateRootHash = stateRootResult.state_root_hash;
-
         if (!stateRootHash) return "0";
 
-        // 2. Get Account Info
-        // state_get_account_info expects 'public_key' OR 'account_identifier'
         const accountInfoResult = await rpcCall('state_get_account_info', {
             public_key: publicKeyHex
         });
-
         const mainPurse = accountInfoResult.account?.main_purse;
         if (!mainPurse) return "0";
 
-        // 3. Get Balance
         const balanceResult = await rpcCall('state_get_balance', {
             state_root_hash: stateRootHash,
             purse_uref: mainPurse
@@ -247,7 +578,6 @@ export const getBalance = async (publicKeyHex: string): Promise<string> => {
             const cspr = parseInt(balanceValue) / 1_000_000_000;
             return cspr.toFixed(2);
         }
-
         return "0";
     } catch (e) {
         console.error("Failed to get balance:", e);
@@ -255,164 +585,5 @@ export const getBalance = async (publicKeyHex: string): Promise<string> => {
     }
 };
 
-// Helper: Convert CLValue to Legacy JSON format { cl_type, bytes, parsed }
-// SDK v5 CLValues have: type.typeName, bytes() method, toString()
-const toLegacyCLValueJson = (clValue: CLValue | any): any => {
-    if (!clValue) return null;
 
-    // Already in legacy format
-    if (clValue?.cl_type && clValue?.bytes !== undefined) return clValue;
 
-    // SDK v5: Get type name from type.typeName property
-    const typeName = clValue?.type?.typeName;
-    const typeID = clValue?.type?.typeID;
-
-    // SDK v5 uses bytes() as a METHOD, not a property
-    const getBytes = (): Uint8Array => {
-        if (typeof clValue.bytes === 'function') {
-            return clValue.bytes();
-        }
-        return new Uint8Array(0);
-    };
-
-    // Handle numeric types (U8, U32, U64, U128, U256, U512)
-    if (typeName && ['U8', 'U32', 'U64', 'U128', 'U256', 'U512'].includes(typeName)) {
-        const bytes = getBytes();
-        return {
-            cl_type: typeName,
-            bytes: toHex(bytes),
-            parsed: clValue.toString()
-        };
-    }
-
-    // Handle ByteArray - SDK v5 uses type.size for array length
-    if (clValue?.type?.size !== undefined) {
-        const bytes = getBytes();
-        const size = clValue.type.size;
-        return {
-            cl_type: { ByteArray: size },
-            bytes: toHex(bytes),
-            parsed: toHex(bytes)
-        };
-    }
-
-    // Handle PublicKey
-    if (typeName === 'PublicKey' || clValue?.toHex) {
-        const hex = clValue.toHex ? clValue.toHex() : toHex(getBytes());
-        return {
-            cl_type: 'PublicKey',
-            bytes: hex,
-            parsed: hex
-        };
-    }
-
-    // Handle Key type
-    if (typeName === 'Key') {
-        const bytes = getBytes();
-        return {
-            cl_type: 'Key',
-            bytes: toHex(bytes),
-            parsed: clValue.toString ? clValue.toString() : toHex(bytes)
-        };
-    }
-
-    // Handle String type
-    if (typeName === 'String') {
-        const bytes = getBytes();
-        return {
-            cl_type: 'String',
-            bytes: toHex(bytes),
-            parsed: clValue.toString()
-        };
-    }
-
-    // Handle Boolean
-    if (typeName === 'Bool') {
-        const bytes = getBytes();
-        return {
-            cl_type: 'Bool',
-            bytes: toHex(bytes),
-            parsed: clValue.toString() === 'true'
-        };
-    }
-
-    // Fallback: try toJSON if available, otherwise return string representation
-    if (typeof clValue.toJSON === 'function') {
-        return clValue.toJSON();
-    }
-
-    // Last resort - try to extract bytes and infer type
-    try {
-        const bytes = getBytes();
-        if (bytes.length > 0) {
-            return {
-                cl_type: typeName || 'Unknown',
-                bytes: toHex(bytes),
-                parsed: clValue.toString ? clValue.toString() : toHex(bytes)
-            };
-        }
-    } catch (e) {
-        console.warn('Failed to serialize CLValue:', e);
-    }
-
-    return clValue?.toString ? clValue.toString() : null;
-};
-
-const executableDeployItemToJson = (item: ExecutableDeployItem): any => {
-    if (item.moduleBytes) {
-        return {
-            ModuleBytes: {
-                module_bytes: toHex(item.moduleBytes.moduleBytes),
-                args: argsToJson(item.moduleBytes.args)
-            }
-        };
-    }
-    if (item.storedContractByHash) {
-        return {
-            StoredContractByHash: {
-                hash: toHex(item.storedContractByHash.hash),
-                entry_point: item.storedContractByHash.entryPoint,
-                args: argsToJson(item.storedContractByHash.args)
-            }
-        };
-    }
-    return {};
-};
-
-const argsToJson = (args: Args): any[] => {
-    const result: any[] = [];
-    const internalMap = (args as any).args;
-
-    if (internalMap && typeof internalMap.entries === 'function') {
-        try {
-            const entries = Array.from(internalMap.entries()) as [any, any][];
-            for (const entry of entries) {
-                const key = entry[0];
-                const value = entry[1];
-
-                // Debug logging to help identify serialization issues
-                console.log(`[argsToJson] Key: ${key}, Value type: ${value?.type?.typeName || value?.constructor?.name}`);
-
-                let json = toLegacyCLValueJson(value);
-
-                // Ensure we never have undefined in the result
-                if (json === undefined || json === null) {
-                    console.warn(`[argsToJson] Warning: CLValue for key "${key}" serialized to null/undefined`);
-                    // Try a more aggressive fallback
-                    json = value?.toString ? value.toString() : String(value);
-                }
-
-                console.log(`[argsToJson] Serialized ${key}:`, JSON.stringify(json));
-                result.push([key, json]);
-            }
-        } catch (e) {
-            console.error("argsToJson: Error iterating args map", e);
-        }
-    } else {
-        console.warn("[argsToJson] Args map is not iterable:", args);
-    }
-    return result;
-};
-
-// Re-export for use in other modules
-export { Transaction, PublicKey, Args, CLValue, Deploy, Approval };

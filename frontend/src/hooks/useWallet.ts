@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Transaction, PublicKey, Deploy, getBalance } from '../utils/casper';
+import { Transaction, PublicKey, Deploy } from 'casper-js-sdk';
+import { getBalance } from '../utils/casper';
 
 export interface WalletState {
     isConnected: boolean;
@@ -157,7 +158,16 @@ export const useWallet = () => {
                 transactionJsonString = JSON.stringify(transactionJson);
             } else {
                 // Legacy Deploy - use SDK's built-in toJSON method
-                const deployJson = Deploy.toJSON(transaction);
+                const deployJson = Deploy.toJSON(transaction) as any;
+
+                // HACK: Ensure version is null for StoredVersionedContractByHash if missing
+                // Wallet throws "arg not valid" if this field is missing
+                if (deployJson.session?.StoredVersionedContractByHash &&
+                    deployJson.session.StoredVersionedContractByHash.version === undefined) {
+                    console.log('[useWallet] Patching missing version in StoredVersionedContractByHash');
+                    deployJson.session.StoredVersionedContractByHash.version = null;
+                }
+
                 transactionJsonString = JSON.stringify(deployJson);
             }
 
