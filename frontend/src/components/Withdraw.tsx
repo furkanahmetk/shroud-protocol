@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowUpCircle, Download, Upload } from 'lucide-react';
 import { CryptoUtils } from '../utils/crypto';
-import { createWithdrawTransaction, sendSignedTransaction, CONTRACT_HASH, fetchContractEvents } from '../utils/casper';
+import { createWithdrawTransaction, sendSignedTransaction, CONTRACT_HASH } from '../utils/casper';
 import { useWallet } from '../hooks/useWallet';
+import { useCommitment } from '../context/CommitmentContext';
 const snarkjs = require('snarkjs');
 
 interface WithdrawProps {
@@ -17,40 +18,8 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
     const [status, setStatus] = useState<'idle' | 'proving' | 'withdrawing' | 'success'>('idle');
     const [showImport, setShowImport] = useState(false);
     const [importInput, setImportInput] = useState('');
-    const [cachedCount, setCachedCount] = useState(0);
     const { signTransaction } = useWallet();
-
-    // Load cached commitment count on mount and sync from chain
-    useEffect(() => {
-        const crypto = new CryptoUtils();
-
-        // Initial load
-        const cached = crypto.loadCommitmentsFromCache(CONTRACT_HASH);
-        setCachedCount(cached.length);
-
-        // Auto-sync
-        const sync = async () => {
-            console.log('[Withdraw] Auto-syncing commitments from chain...');
-            try {
-                const chainData = await fetchContractEvents(CONTRACT_HASH);
-                if (chainData && chainData.length > 0) {
-                    // Only overwrite if chain has more or different data (simple check: length)
-                    // Or just overwrite to be safe and authoritative
-                    console.log(`[Withdraw] Synced ${chainData.length} commitments from chain`);
-
-                    const key = 'shroud_commitments_' + CONTRACT_HASH.substring(0, 8);
-                    localStorage.setItem(key, JSON.stringify(chainData));
-                    setCachedCount(chainData.length);
-                } else {
-                    console.log('[Withdraw] No events found on chain or sync failed');
-                }
-            } catch (e) {
-                console.error('[Withdraw] Auto-sync failed', e);
-            }
-        };
-
-        sync();
-    }, []);
+    const { commitments, isSyncing, forceSync } = useCommitment();
 
     // Import commitments from CLI cache JSON
     const handleImportCommitments = () => {
@@ -64,7 +33,6 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
             const key = 'shroud_commitments_' + CONTRACT_HASH.substring(0, 8);
             localStorage.setItem(key, JSON.stringify(commitments));
 
-            setCachedCount(commitments.length);
             setImportInput('');
             setShowImport(false);
             alert(`Successfully imported ${commitments.length} commitments!`);
@@ -75,17 +43,10 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
 
     const handleSync = async () => {
         setIsProcessing(true);
-        console.log('[Withdraw] Force-syncing commitments from chain...');
+        console.log('[Withdraw] Force-syncing via global context...');
         try {
-            const chainData = await fetchContractEvents(CONTRACT_HASH);
-            if (chainData && chainData.length > 0) {
-                const key = 'shroud_commitments_' + CONTRACT_HASH.substring(0, 8);
-                localStorage.setItem(key, JSON.stringify(chainData));
-                setCachedCount(chainData.length);
-                alert(`Successfully synced ${chainData.length} commitments!`);
-            } else {
-                alert('No commitments found on chain or sync failed.');
-            }
+            await forceSync();
+            alert(`Synced! Total commitments: ${commitments.length}`);
         } catch (e: any) {
             console.error('[Withdraw] Sync failed', e);
             alert('Sync failed: ' + e.message);
@@ -111,9 +72,9 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
             const crypto = new CryptoUtils();
             await crypto.init();
 
-            // 3. Load all commitments from cache and rebuild tree
-            console.log('[Withdraw] Loading commitments from cache...');
-            const allCommitments = crypto.loadCommitmentsFromCache(CONTRACT_HASH);
+            // 3. Load all commitments from global context and rebuild tree
+            console.log('[Withdraw] Loading commitments from global context...');
+            const allCommitments = commitments;
 
             // Rebuild tree from cache
             const tree = crypto.createMerkleTree();
@@ -254,7 +215,7 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
 
             <button
                 onClick={handleWithdraw}
-                disabled={isProcessing || !secretInput || !recipient}
+                disabled={isProcessing || isSyncing || !secretInput || !recipient}
                 className="w-full py-4 btn-primary rounded-xl flex justify-center items-center group disabled:opacity-50 disabled:cursor-not-allowed"
             >
                 {status === 'proving' ? (
@@ -265,7 +226,6 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
                 ) : status === 'withdrawing' ? (
                     <span className="animate-pulse flex items-center">
                         <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2"></div>
-                        Submitting Transaction...
                     </span>
                 ) : (
                     <>
@@ -280,7 +240,7 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
                 <div className="flex justify-between items-center">
                     <div className="text-sm text-brand-300 font-medium">🔄 On-Chain Sync</div>
                     <div className="text-xs text-brand-200/70 font-mono">
-                        {cachedCount} commitments historical
+                        {commitments.length} commitments historical
                     </div>
                 </div>
 
@@ -289,13 +249,13 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
                     disabled={isProcessing}
                     className="w-full py-2 bg-brand-500/20 hover:bg-brand-500/30 border border-brand-500/30 rounded-xl text-xs font-medium text-brand-300 transition-all flex items-center justify-center disabled:opacity-50"
                 >
-                    {isProcessing ? <div className="w-3 h-3 border-2 border-brand-300/30 border-t-brand-300 rounded-full animate-spin mr-1"></div> : "🔄"} Force Re-sync from Explorer
+                    {isProcessing || isSyncing ? <div className="w-3 h-3 border-2 border-brand-300/30 border-t-brand-300 rounded-full animate-spin mr-1"></div> : "🔄"} Force Re-sync from Explorer
                 </button>
 
                 <p className="text-[10px] text-gray-500 leading-relaxed text-center px-2">
                     Synced automatically from the Casper blockchain.
                 </p>
             </div>
-        </div>
+        </div >
     );
 }
