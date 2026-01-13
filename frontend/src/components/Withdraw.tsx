@@ -147,20 +147,14 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
             console.log(`[Withdraw] Using leaf index: ${actualIndex}`);
 
             // 4. Build proof input
-            console.log('[Withdraw] Preparing proof input...');
             let recipientBigInt: bigint;
             try {
-                // IMPORTANT: The protocol uses Account Hash for the recipient, not the public key hex.
-                // We must derive the account hash to match what the contract expects and what ZK verifies.
                 const { getAccountHash } = await import('../utils/casper');
                 const accountHashHex = getAccountHash(recipient);
                 recipientBigInt = BigInt('0x' + accountHashHex);
-
-                console.log('[Withdraw] Derived Recipient Account Hash:', accountHashHex);
-                console.log('[Withdraw] Recipient BigInt:', recipientBigInt.toString().substring(0, 10) + '...');
             } catch (err: any) {
                 console.error('[Withdraw] Failed to parse recipient public key:', recipient);
-                throw new Error(`Invalid recipient public key: ${err.message}. Please enter a valid Casper Public Key (starts with 01 or 02).`);
+                throw new Error(`Invalid recipient public key: ${err.message}. Please enter a valid Casper Public Key.`);
             }
 
             const input = {
@@ -175,27 +169,15 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
                 fee: 0n
             };
 
-            console.log('[Withdraw] Input prepared. Starting snarkjs.groth16.fullProve...');
-            console.log('[Withdraw] Proof artifacts:', { wasm: "/withdraw.wasm", zkey: "/withdraw_final.zkey" });
+            const { proof, publicSignals } = await snarkjs.groth16.fullProve(
+                input,
+                "/withdraw.wasm",
+                "/withdraw_final.zkey"
+            );
 
-            let proofResult;
-            try {
-                proofResult = await snarkjs.groth16.fullProve(
-                    input,
-                    "/withdraw.wasm",
-                    "/withdraw_final.zkey"
-                );
-                console.log('[Withdraw] Proof generated successfully!');
-            } catch (err: any) {
-                console.error('[Withdraw] SnarkJS proof generation failed!', err);
-                throw new Error(`Proof generation failed: ${err?.message || 'Check if wasm/zkey files exist in public folder'}`);
-            }
-
-            const { proof, publicSignals } = proofResult;
             setStatus('withdrawing');
 
             // 5. Create Transaction (SDK v5)
-            console.log('[Withdraw] Creating transaction...');
             const proofJson = JSON.stringify(proof);
             const proofBytes = new TextEncoder().encode(proofJson);
 
@@ -208,16 +190,14 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
             );
 
             // 6. Sign & Send
-            console.log('[Withdraw] Requesting signature...');
             const signedTransaction = await signTransaction(transaction, activeKey);
-            console.log('[Withdraw] Submitting transaction...');
             const transactionHash = await sendSignedTransaction(signedTransaction);
 
             console.log("Withdraw Transaction Hash:", transactionHash);
             setStatus('success');
 
         } catch (e: any) {
-            console.error("Withdraw failed error object:", e);
+            console.error("Withdraw failed:", e);
             setStatus('idle');
             alert(e.message || "Withdraw failed. See console for details.");
         } finally {

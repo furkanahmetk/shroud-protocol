@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowDownCircle, Copy, Check } from 'lucide-react';
 import { CryptoUtils } from '../utils/crypto';
-import { createDepositTransaction, createDepositSessionTransaction, sendSignedTransaction, CONTRACT_HASH, fetchContractEvents } from '../utils/casper';
+import { createDepositTransaction, createDepositSessionTransaction, sendSignedTransaction, CONTRACT_HASH } from '../utils/casper';
 import { useWallet } from '../hooks/useWallet';
 
 interface DepositProps {
@@ -15,23 +15,6 @@ export default function Deposit({ isConnected, activeKey }: DepositProps) {
     const [secret, setSecret] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
     const { signTransaction, balance } = useWallet();
-
-    // Sync from chain on mount to ensure local index is correct
-    React.useEffect(() => {
-        const sync = async () => {
-            console.log('[Deposit] Syncing history from chain...');
-            try {
-                const chainData = await fetchContractEvents(CONTRACT_HASH);
-                if (chainData && chainData.length > 0) {
-                    const key = 'shroud_commitments_' + CONTRACT_HASH.substring(0, 8);
-                    localStorage.setItem(key, JSON.stringify(chainData));
-                }
-            } catch (e) {
-                console.error('[Deposit] Sync failed', e);
-            }
-        };
-        sync();
-    }, []);
 
     const handleDeposit = async () => {
         if (!isConnected || !activeKey) return;
@@ -70,14 +53,39 @@ export default function Deposit({ isConnected, activeKey }: DepositProps) {
                 secret: secret.toString(),
                 commitment: commitment.toString(),
                 leafIndex: leafIndex
-            });
+            }, null, 2); // Pretty print for the file
+
             setSecret(secretString);
+
+            // 9. Automatic Download
+            downloadSecret(secretString, commitment.toString());
 
         } catch (e) {
             console.error("Deposit failed:", e);
             alert("Deposit failed. See console for details.");
         } finally {
             setIsProcessing(false);
+        }
+    };
+
+    const downloadSecret = (secretContent: string, commitment: string) => {
+        try {
+            const blob = new Blob([secretContent], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = `shroud-secret-${commitment.slice(0, 10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+
+            // Delay cleanup to ensure browser starts the download
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 100);
+        } catch (e) {
+            console.error('[Deposit] Download failed:', e);
         }
     };
 
