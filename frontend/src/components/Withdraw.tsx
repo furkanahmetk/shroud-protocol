@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { ArrowUpCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ArrowUpCircle, Download, Upload } from 'lucide-react';
 import { CryptoUtils } from '../utils/crypto';
-import { createWithdrawTransaction, sendSignedTransaction } from '../utils/casper';
+import { createWithdrawTransaction, sendSignedTransaction, CONTRACT_HASH } from '../utils/casper';
 import { useWallet } from '../hooks/useWallet';
 const snarkjs = require('snarkjs');
 
@@ -15,7 +15,38 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
     const [recipient, setRecipient] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
     const [status, setStatus] = useState<'idle' | 'proving' | 'withdrawing' | 'success'>('idle');
+    const [showImport, setShowImport] = useState(false);
+    const [importInput, setImportInput] = useState('');
+    const [cachedCount, setCachedCount] = useState(0);
     const { signTransaction } = useWallet();
+
+    // Load cached commitment count on mount
+    useEffect(() => {
+        const crypto = new CryptoUtils();
+        const cached = crypto.loadCommitmentsFromCache(CONTRACT_HASH);
+        setCachedCount(cached.length);
+    }, []);
+
+    // Import commitments from CLI cache JSON
+    const handleImportCommitments = () => {
+        try {
+            const commitments = JSON.parse(importInput);
+            if (!Array.isArray(commitments)) {
+                throw new Error('Input must be a JSON array');
+            }
+
+            // Store directly to localStorage
+            const key = 'shroud_commitments_' + CONTRACT_HASH.substring(0, 8);
+            localStorage.setItem(key, JSON.stringify(commitments));
+
+            setCachedCount(commitments.length);
+            setImportInput('');
+            setShowImport(false);
+            alert(`Successfully imported ${commitments.length} commitments!`);
+        } catch (e: any) {
+            alert('Failed to import: ' + e.message);
+        }
+    };
 
     const handleWithdraw = async () => {
         if (!isConnected || !activeKey) return;
@@ -28,24 +59,62 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
             const nullifier = BigInt(secretData.nullifier);
             const secret = BigInt(secretData.secret);
             const commitment = BigInt(secretData.commitment);
-            const leafIndex = secretData.leafIndex ? parseInt(secretData.leafIndex) : 0;
+            const storedLeafIndex = secretData.leafIndex ? parseInt(secretData.leafIndex) : 0;
 
             // 2. Init Crypto
             const crypto = new CryptoUtils();
             await crypto.init();
 
-            // 3. Generate Proof
-            // Calculate path indices from leaf index (bit decomposition)
-            const pathIndices = new Array(20).fill(0).map((_, i) => (leafIndex >> i) & 1);
+            // 3. Load all commitments from cache and rebuild tree
+            console.log('[Withdraw] Loading commitments from cache...');
+            const allCommitments = crypto.loadCommitmentsFromCache(CONTRACT_HASH);
 
-            // Note: For full functionality with multiple deposits, we would need to 
-            // fetch sibling commitments (pathElements) from the blockchain.
-            // Current assumption: Empty tree (zeros) except for our leaf.
-            const pathElements = new Array(20).fill(0n);
+            let pathElements: bigint[];
+            let pathIndices: number[];
+            let computedRoot: bigint;
+            let actualIndex: number;
 
-            // Compute root for the given path
-            const computedRoot = crypto.computeMerkleRoot(commitment, pathIndices, pathElements);
+            if (allCommitments.length > 0) {
+                // Find our commitment in the cached list
+                const ourIndex = allCommitments.findIndex(c => c === commitment);
 
+                if (ourIndex !== -1) {
+                    console.log(`[Withdraw] Found commitment in cache at index ${ourIndex}`);
+
+                    // Rebuild tree with all cached commitments
+                    const tree = crypto.createMerkleTree();
+                    for (const c of allCommitments) {
+                        tree.insert(c);
+                    }
+
+                    const path = tree.getPath(ourIndex);
+                    pathElements = path.pathElements;
+                    pathIndices = path.pathIndices;
+                    computedRoot = tree.getRoot();
+                    actualIndex = ourIndex;
+
+                    console.log(`[Withdraw] Tree rebuilt with ${allCommitments.length} commitments`);
+                    console.log(`[Withdraw] Root: ${computedRoot.toString(16).substring(0, 16)}...`);
+                } else {
+                    console.warn('[Withdraw] Commitment not found in cache, using stored leafIndex');
+                    // Fallback to stored leafIndex approach
+                    actualIndex = storedLeafIndex;
+                    pathIndices = new Array(20).fill(0).map((_, i) => (actualIndex >> i) & 1);
+                    pathElements = new Array(20).fill(0n);
+                    computedRoot = crypto.computeMerkleRoot(commitment, pathIndices, pathElements);
+                }
+            } else {
+                // No cached commitments - use zeros (only works for first deposit)
+                console.warn('[Withdraw] No cached commitments found, using zeros');
+                actualIndex = storedLeafIndex;
+                pathIndices = new Array(20).fill(0).map((_, i) => (actualIndex >> i) & 1);
+                pathElements = new Array(20).fill(0n);
+                computedRoot = crypto.computeMerkleRoot(commitment, pathIndices, pathElements);
+            }
+
+            console.log(`[Withdraw] Using leaf index: ${actualIndex}`);
+
+            // 4. Build proof input
             const input = {
                 nullifier: nullifier,
                 secret: secret,
@@ -66,9 +135,7 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
 
             setStatus('withdrawing');
 
-            // 4. Create Transaction (SDK v5)
-            // Contract returns root and nullifierHash as public signals (verified by circuit)
-            // We use our computed root to ensure consistency
+            // 5. Create Transaction (SDK v5)
             const proofJson = JSON.stringify(proof);
             const proofBytes = new TextEncoder().encode(proofJson);
 
@@ -80,7 +147,7 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
                 recipient
             );
 
-            // 5. Sign & Send
+            // 6. Sign & Send
             const signedTransaction = await signTransaction(transaction, activeKey);
             const transactionHash = await sendSignedTransaction(signedTransaction);
 
@@ -165,6 +232,57 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
                     </>
                 )}
             </button>
+
+            {/* CLI Cache Sync & Import */}
+            <div className="mt-4 p-4 bg-purple-500/10 border border-purple-500/20 rounded-xl space-y-3">
+                <div className="flex justify-between items-center">
+                    <div className="text-sm text-purple-300 font-medium">🔄 Merkle Tree Cache</div>
+                    <div className="text-xs text-purple-200/70 font-mono">
+                        {cachedCount} commitments cached
+                    </div>
+                </div>
+
+                {showImport ? (
+                    <div className="space-y-2">
+                        <p className="text-xs text-purple-200/70">
+                            Paste CLI cache from: <code className="bg-black/30 px-1 rounded">cli/.commitments_eab05369.json</code>
+                        </p>
+                        <textarea
+                            value={importInput}
+                            onChange={(e) => setImportInput(e.target.value)}
+                            placeholder='Paste JSON array: ["commitment1", "commitment2", ...]'
+                            className="w-full bg-black/30 border border-purple-500/20 rounded p-2 text-xs font-mono text-purple-300 h-20 resize-none"
+                        />
+                        <div className="flex space-x-2">
+                            <button
+                                onClick={handleImportCommitments}
+                                className="flex-1 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 rounded text-xs font-medium text-purple-300 transition-all flex items-center justify-center"
+                            >
+                                <Upload className="w-3 h-3 mr-1" /> Import
+                            </button>
+                            <button
+                                onClick={() => setShowImport(false)}
+                                className="py-2 px-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded text-xs font-medium text-gray-400 transition-all"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="flex space-x-2">
+                        <button
+                            onClick={() => setShowImport(true)}
+                            className="flex-1 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 rounded text-xs font-medium text-purple-300 transition-all flex items-center justify-center"
+                        >
+                            <Download className="w-3 h-3 mr-1" /> Import CLI Cache
+                        </button>
+                    </div>
+                )}
+
+                <p className="text-xs text-purple-200/50 leading-relaxed">
+                    ⚠️ Frontend cache must match on-chain state. Import CLI cache if you deposited via CLI.
+                </p>
+            </div>
 
             {/* CLI Tool Guidance */}
             <div className="mt-4 p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl">

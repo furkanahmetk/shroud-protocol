@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Transaction, PublicKey, Deploy, Approval, deployToLegacyJson, getBalance } from '../utils/casper';
+import { Transaction, PublicKey, Deploy, getBalance } from '../utils/casper';
 
 export interface WalletState {
     isConnected: boolean;
@@ -156,9 +156,8 @@ export const useWallet = () => {
                 const transactionJson = transaction.toJSON();
                 transactionJsonString = JSON.stringify(transactionJson);
             } else {
-                // Legacy Deploy
-                // Use manual serialization helper
-                const deployJson = deployToLegacyJson(transaction);
+                // Legacy Deploy - use SDK's built-in toJSON method
+                const deployJson = Deploy.toJSON(transaction);
                 transactionJsonString = JSON.stringify(deployJson);
             }
 
@@ -177,17 +176,23 @@ export const useWallet = () => {
             if (signResult.signature) {
                 const publicKey = PublicKey.fromHex(signingPublicKeyHex);
 
+                // The signature needs to be prefixed with the key type byte
+                // Key type is the first byte of the public key hex: 01 = Ed25519, 02 = Secp256k1
+                const keyTypeByte = parseInt(signingPublicKeyHex.substring(0, 2), 16);
+                const prefixedSignature = new Uint8Array([keyTypeByte, ...signResult.signature]);
+                console.log('[signTransaction] Key type:', keyTypeByte, 'Signature length:', signResult.signature.length);
+
                 if (transaction instanceof Transaction) {
-                    transaction.setSignature(signResult.signature, publicKey);
+                    transaction.setSignature(prefixedSignature, publicKey);
                     return transaction;
                 } else {
-                    // Legacy Deploy signing
-                    // Construct a new Approval
-                    // Approval(signer: PublicKey, signature: string | Signature)
-                    const approval = new Approval(publicKey, signResult.signature);
-
-                    transaction.approvals.push(approval);
-                    return transaction;
+                    // Legacy Deploy signing - use Deploy.setSignature static method
+                    const signedDeploy = Deploy.setSignature(
+                        transaction,
+                        prefixedSignature,
+                        publicKey
+                    );
+                    return signedDeploy;
                 }
             }
 

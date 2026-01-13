@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowDownCircle, Copy, Check } from 'lucide-react';
 import { CryptoUtils } from '../utils/crypto';
-import { createDepositTransaction, createDepositSessionTransaction, sendSignedTransaction } from '../utils/casper';
+import { createDepositTransaction, createDepositSessionTransaction, sendSignedTransaction, CONTRACT_HASH } from '../utils/casper';
 import { useWallet } from '../hooks/useWallet';
 
 interface DepositProps {
@@ -27,27 +27,32 @@ export default function Deposit({ isConnected, activeKey }: DepositProps) {
             const { nullifier, secret } = crypto.generateSecrets();
             const commitment = crypto.computeCommitment(nullifier, secret);
 
-            // 2. Fetch Session WASM
+            // 2. Save commitment to local cache for later withdrawal
+            // This is done BEFORE the transaction to ensure we have the leafIndex
+            const leafIndex = crypto.saveCommitmentToCache(CONTRACT_HASH, commitment);
+            console.log('[Deposit] Commitment cached at leafIndex:', leafIndex);
+
+            // 3. Fetch Session WASM
             const wasmResponse = await fetch('/deposit_session.wasm');
             if (!wasmResponse.ok) throw new Error('Failed to load session WASM');
             const wasmBytes = new Uint8Array(await wasmResponse.arrayBuffer());
 
-            // 3. Create Transaction which uses Session Code (SDK v5)
+            // 4. Create Transaction which uses Session Code (SDK v5)
             const transaction = createDepositSessionTransaction(activeKey, commitment, BigInt(100_000_000_000), wasmBytes);
 
-            // 3. Sign Transaction
+            // 5. Sign Transaction
             const signedTransactionJson = await signTransaction(transaction, activeKey);
 
-            // 4. Send Transaction
+            // 6. Send Transaction
             const transactionHash = await sendSignedTransaction(signedTransactionJson);
             console.log("Deposit Transaction Hash:", transactionHash);
 
-            // 5. Show Secret to User
-            // Format: nullifier-secret-commitment
+            // 7. Show Secret to User (including leafIndex for withdrawal)
             const secretString = JSON.stringify({
                 nullifier: nullifier.toString(),
                 secret: secret.toString(),
-                commitment: commitment.toString()
+                commitment: commitment.toString(),
+                leafIndex: leafIndex
             });
             setSecret(secretString);
 

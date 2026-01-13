@@ -17,9 +17,13 @@ import {
     Duration,
     ModuleBytes,
     StoredContractByHash,
+    StoredVersionedContractByHash,
     ContractHash,
     Approval,
     Timestamp,
+    Key,
+    KeyTypeID,
+    CLTypeUInt8,
 } from 'casper-js-sdk';
 
 const NODE_URL = process.env.NEXT_PUBLIC_NODE_URL || 'https://node.testnet.casper.network/rpc';
@@ -49,7 +53,7 @@ export const createDepositSessionTransaction = (
         amount: CLValue.newCLUInt512(amount.toString())
     });
 
-    const paymentAmount = 50_000_000_000; // 50 CSPR
+    const paymentAmount = 150_000_000_000; // 150 CSPR - increased for complex WASM execution
 
     const deployParams = new DeployHeader();
     deployParams.account = senderKey;
@@ -83,6 +87,7 @@ export const createDepositTransaction = (
 
 /**
  * Create a withdraw transaction using SDK v5 ContractCallBuilder
+ * Uses Key type for recipient and List[U8] for proof (matching CLI)
  */
 export const createWithdrawTransaction = (
     activeKey: string,
@@ -94,11 +99,18 @@ export const createWithdrawTransaction = (
     const senderKey = PublicKey.fromHex(activeKey);
     const recipientKey = PublicKey.fromHex(recipient);
 
+    // Create Key from PublicKey's account hash using prefixed string format
+    // This ensures proper serialization (Key.newKey properly populates the 'account' property)
+    const recipientAccountKey = Key.newKey(recipientKey.accountHash().toPrefixedString());
+
+    // Create List<U8> for proof (matches CLI: CLValueBuilder.list(Array.from(proof).map(b => CLValueBuilder.u8(b))))
+    const proofList = Array.from(proof).map(b => CLValue.newCLUint8(b));
+
     const args = Args.fromMap({
-        proof: CLValue.newCLByteArray(proof),
+        proof: CLValue.newCLList(CLTypeUInt8, proofList),
         root: CLValue.newCLUInt256(root.toString()),
         nullifier_hash: CLValue.newCLUInt256(nullifierHash.toString()),
-        recipient: CLValue.newCLPublicKey(recipientKey),
+        recipient: CLValue.newCLKey(recipientAccountKey),
     });
 
     const deployParams = new DeployHeader();
@@ -109,13 +121,16 @@ export const createWithdrawTransaction = (
     deployParams.ttl = new Duration(1800000);
 
     const session = new ExecutableDeployItem();
-    session.storedContractByHash = new StoredContractByHash(
+    // StoredVersionedContractByHash(hash, entryPoint, args, version)
+    // We must pass null explicitly so it appears in the JSON, otherwise wallet throws "arg not valid"
+    session.storedVersionedContractByHash = new StoredVersionedContractByHash(
         ContractHash.newContract(getContractHash()),
         'withdraw',
-        args
+        args,
+        null as any // Force null to be serialized
     );
 
-    const payment = ExecutableDeployItem.standardPayment('10000000000'); // 10 CSPR as string
+    const payment = ExecutableDeployItem.standardPayment('100000000000'); // 100 CSPR for complex ZK verification
 
     return Deploy.makeDeploy(deployParams, payment, session);
 };
@@ -156,18 +171,26 @@ export const deployToLegacyJson = (deploy: Deploy): any => {
 
 /**
  * Send a signed transaction to the network
+ * Uses local proxy to avoid CORS issues
  */
 export const sendSignedTransaction = async (signedTransaction: Transaction | Deploy): Promise<string> => {
-    const httpHandler = new HttpHandler(NODE_URL);
-    const rpcClient = new RpcClient(httpHandler);
+    console.log('[sendSignedTransaction] Starting submission...');
 
     if (signedTransaction instanceof Transaction) {
-        const result = await rpcClient.putTransaction(signedTransaction);
-        return result.transactionHash.toString();
+        // For Transaction v2, use account_put_transaction 
+        const txJson = signedTransaction.toJSON();
+        const result = await rpcCall('account_put_transaction', { transaction: txJson });
+        console.log('[sendSignedTransaction] Transaction result:', result);
+        return result.transaction_hash?.toString() || result.transactionHash?.toString();
     } else {
-        // Handle Legacy Deploy
-        const result = await (rpcClient as any).deploy(signedTransaction);
-        return result.deploy_hash;
+        // For Legacy Deploy, use account_put_deploy
+        const deployJson = Deploy.toJSON(signedTransaction) as any;
+        console.log('[sendSignedTransaction] Submitting deploy via proxy:', deployJson?.hash);
+        console.log('[sendSignedTransaction] Deploy Approvals:', JSON.stringify(deployJson?.approvals));
+
+        const result = await rpcCall('account_put_deploy', { deploy: deployJson });
+        console.log('[sendSignedTransaction] Deploy result:', result);
+        return result.deploy_hash || result.deployHash;
     }
 };
 
@@ -233,56 +256,106 @@ export const getBalance = async (publicKeyHex: string): Promise<string> => {
 };
 
 // Helper: Convert CLValue to Legacy JSON format { cl_type, bytes, parsed }
+// SDK v5 CLValues have: type.typeName, bytes() method, toString()
 const toLegacyCLValueJson = (clValue: CLValue | any): any => {
+    if (!clValue) return null;
+
+    // Already in legacy format
     if (clValue?.cl_type && clValue?.bytes !== undefined) return clValue;
 
-    // Use clType().toString() if available to identify type reliably
-    let typeName = clValue?.constructor?.name;
-    if (clValue?.clType && typeof clValue.clType === 'function') {
-        const typeObj = clValue.clType();
-        if (typeObj && typeObj.toString) typeName = typeObj.toString();
-        // SDK v5 clType() usually returns an object that has a tag or toString
-        // e.g. U512 type object.
-        // Let's rely on constructor name as primary but be careful about bundling.
-        // Actually, most reliable is checking instance prototypes or tags.
-        // Reverting to constructor name but handling variations.
-        typeName = clValue?.constructor?.name;
-    }
+    // SDK v5: Get type name from type.typeName property
+    const typeName = clValue?.type?.typeName;
+    const typeID = clValue?.type?.typeID;
 
-    if (['CLU8', 'CLU32', 'CLU64', 'CLU128', 'CLU256', 'CLU512'].includes(typeName)) {
-        return {
-            cl_type: typeName.replace('CL', 'U'),
-            bytes: toHex(clValue.toBytes()),
-            parsed: clValue.toString()
-        };
-    }
+    // SDK v5 uses bytes() as a METHOD, not a property
+    const getBytes = (): Uint8Array => {
+        if (typeof clValue.bytes === 'function') {
+            return clValue.bytes();
+        }
+        return new Uint8Array(0);
+    };
 
-    // Also handle just "U512", "U256" if constructor name is simplified
-    if (['U8', 'U32', 'U64', 'U128', 'U256', 'U512'].includes(typeName)) {
+    // Handle numeric types (U8, U32, U64, U128, U256, U512)
+    if (typeName && ['U8', 'U32', 'U64', 'U128', 'U256', 'U512'].includes(typeName)) {
+        const bytes = getBytes();
         return {
             cl_type: typeName,
-            bytes: toHex(clValue.toBytes()),
+            bytes: toHex(bytes),
             parsed: clValue.toString()
         };
     }
 
-    if (typeName === 'CLByteArray' || typeName === 'ByteArray') {
+    // Handle ByteArray - SDK v5 uses type.size for array length
+    if (clValue?.type?.size !== undefined) {
+        const bytes = getBytes();
+        const size = clValue.type.size;
         return {
-            cl_type: { ByteArray: 32 },
-            bytes: toHex(clValue.data),
-            parsed: toHex(clValue.data)
+            cl_type: { ByteArray: size },
+            bytes: toHex(bytes),
+            parsed: toHex(bytes)
         };
     }
 
-    if (typeName === 'CLPublicKey' || typeName === 'PublicKey') {
+    // Handle PublicKey
+    if (typeName === 'PublicKey' || clValue?.toHex) {
+        const hex = clValue.toHex ? clValue.toHex() : toHex(getBytes());
         return {
             cl_type: 'PublicKey',
-            bytes: clValue.toHex ? clValue.toHex() : toHex(clValue.data),
-            parsed: clValue.toHex ? clValue.toHex() : toHex(clValue.data)
+            bytes: hex,
+            parsed: hex
         };
     }
 
-    return clValue?.toJSON ? clValue.toJSON() : clValue;
+    // Handle Key type
+    if (typeName === 'Key') {
+        const bytes = getBytes();
+        return {
+            cl_type: 'Key',
+            bytes: toHex(bytes),
+            parsed: clValue.toString ? clValue.toString() : toHex(bytes)
+        };
+    }
+
+    // Handle String type
+    if (typeName === 'String') {
+        const bytes = getBytes();
+        return {
+            cl_type: 'String',
+            bytes: toHex(bytes),
+            parsed: clValue.toString()
+        };
+    }
+
+    // Handle Boolean
+    if (typeName === 'Bool') {
+        const bytes = getBytes();
+        return {
+            cl_type: 'Bool',
+            bytes: toHex(bytes),
+            parsed: clValue.toString() === 'true'
+        };
+    }
+
+    // Fallback: try toJSON if available, otherwise return string representation
+    if (typeof clValue.toJSON === 'function') {
+        return clValue.toJSON();
+    }
+
+    // Last resort - try to extract bytes and infer type
+    try {
+        const bytes = getBytes();
+        if (bytes.length > 0) {
+            return {
+                cl_type: typeName || 'Unknown',
+                bytes: toHex(bytes),
+                parsed: clValue.toString ? clValue.toString() : toHex(bytes)
+            };
+        }
+    } catch (e) {
+        console.warn('Failed to serialize CLValue:', e);
+    }
+
+    return clValue?.toString ? clValue.toString() : null;
 };
 
 const executableDeployItemToJson = (item: ExecutableDeployItem): any => {
@@ -316,13 +389,27 @@ const argsToJson = (args: Args): any[] => {
             for (const entry of entries) {
                 const key = entry[0];
                 const value = entry[1];
+
+                // Debug logging to help identify serialization issues
+                console.log(`[argsToJson] Key: ${key}, Value type: ${value?.type?.typeName || value?.constructor?.name}`);
+
                 let json = toLegacyCLValueJson(value);
-                if (json === undefined) json = null;
+
+                // Ensure we never have undefined in the result
+                if (json === undefined || json === null) {
+                    console.warn(`[argsToJson] Warning: CLValue for key "${key}" serialized to null/undefined`);
+                    // Try a more aggressive fallback
+                    json = value?.toString ? value.toString() : String(value);
+                }
+
+                console.log(`[argsToJson] Serialized ${key}:`, JSON.stringify(json));
                 result.push([key, json]);
             }
         } catch (e) {
-            console.error("DEBUG argsToJson: Error iterating", e);
+            console.error("argsToJson: Error iterating args map", e);
         }
+    } else {
+        console.warn("[argsToJson] Args map is not iterable:", args);
     }
     return result;
 };
