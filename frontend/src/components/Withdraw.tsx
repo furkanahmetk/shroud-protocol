@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowUpCircle, Download, Upload } from 'lucide-react';
 import { CryptoUtils } from '../utils/crypto';
-import { createWithdrawTransaction, sendSignedTransaction, CONTRACT_HASH } from '../utils/casper';
+import { createWithdrawTransaction, sendSignedTransaction, CONTRACT_HASH, fetchContractEvents } from '../utils/casper';
 import { useWallet } from '../hooks/useWallet';
 const snarkjs = require('snarkjs');
 
@@ -20,11 +20,36 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
     const [cachedCount, setCachedCount] = useState(0);
     const { signTransaction } = useWallet();
 
-    // Load cached commitment count on mount
+    // Load cached commitment count on mount and sync from chain
     useEffect(() => {
         const crypto = new CryptoUtils();
+
+        // Initial load
         const cached = crypto.loadCommitmentsFromCache(CONTRACT_HASH);
         setCachedCount(cached.length);
+
+        // Auto-sync
+        const sync = async () => {
+            console.log('[Withdraw] Auto-syncing commitments from chain...');
+            try {
+                const chainData = await fetchContractEvents(CONTRACT_HASH);
+                if (chainData && chainData.length > 0) {
+                    // Only overwrite if chain has more or different data (simple check: length)
+                    // Or just overwrite to be safe and authoritative
+                    console.log(`[Withdraw] Synced ${chainData.length} commitments from chain`);
+
+                    const key = 'shroud_commitments_' + CONTRACT_HASH.substring(0, 8);
+                    localStorage.setItem(key, JSON.stringify(chainData));
+                    setCachedCount(chainData.length);
+                } else {
+                    console.log('[Withdraw] No events found on chain or sync failed');
+                }
+            } catch (e) {
+                console.error('[Withdraw] Auto-sync failed', e);
+            }
+        };
+
+        sync();
     }, []);
 
     // Import commitments from CLI cache JSON
@@ -48,6 +73,27 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
         }
     };
 
+    const handleSync = async () => {
+        setIsProcessing(true);
+        console.log('[Withdraw] Force-syncing commitments from chain...');
+        try {
+            const chainData = await fetchContractEvents(CONTRACT_HASH);
+            if (chainData && chainData.length > 0) {
+                const key = 'shroud_commitments_' + CONTRACT_HASH.substring(0, 8);
+                localStorage.setItem(key, JSON.stringify(chainData));
+                setCachedCount(chainData.length);
+                alert(`Successfully synced ${chainData.length} commitments!`);
+            } else {
+                alert('No commitments found on chain or sync failed.');
+            }
+        } catch (e: any) {
+            console.error('[Withdraw] Sync failed', e);
+            alert('Sync failed: ' + e.message);
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
     const handleWithdraw = async () => {
         if (!isConnected || !activeKey) return;
         setIsProcessing(true);
@@ -59,7 +105,7 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
             const nullifier = BigInt(secretData.nullifier);
             const secret = BigInt(secretData.secret);
             const commitment = BigInt(secretData.commitment);
-            const storedLeafIndex = secretData.leafIndex ? parseInt(secretData.leafIndex) : 0;
+            const storedLeafIndex = secretData.leafIndex !== undefined ? parseInt(secretData.leafIndex) : -1;
 
             // 2. Init Crypto
             const crypto = new CryptoUtils();
@@ -69,52 +115,54 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
             console.log('[Withdraw] Loading commitments from cache...');
             const allCommitments = crypto.loadCommitmentsFromCache(CONTRACT_HASH);
 
-            let pathElements: bigint[];
-            let pathIndices: number[];
-            let computedRoot: bigint;
-            let actualIndex: number;
+            // Rebuild tree from cache
+            const tree = crypto.createMerkleTree();
+            for (const c of allCommitments) {
+                tree.insert(c);
+            }
+            console.log(`[Withdraw] Tree rebuilt with ${allCommitments.length} cached commitments`);
 
-            if (allCommitments.length > 0) {
-                // Find our commitment in the cached list
-                const ourIndex = allCommitments.findIndex(c => c === commitment);
+            // Find our commitment
+            let actualIndex = allCommitments.findIndex(c => c === commitment);
 
-                if (ourIndex !== -1) {
-                    console.log(`[Withdraw] Found commitment in cache at index ${ourIndex}`);
-
-                    // Rebuild tree with all cached commitments
-                    const tree = crypto.createMerkleTree();
-                    for (const c of allCommitments) {
-                        tree.insert(c);
-                    }
-
-                    const path = tree.getPath(ourIndex);
-                    pathElements = path.pathElements;
-                    pathIndices = path.pathIndices;
-                    computedRoot = tree.getRoot();
-                    actualIndex = ourIndex;
-
-                    console.log(`[Withdraw] Tree rebuilt with ${allCommitments.length} commitments`);
-                    console.log(`[Withdraw] Root: ${computedRoot.toString(16).substring(0, 16)}...`);
-                } else {
-                    console.warn('[Withdraw] Commitment not found in cache, using stored leafIndex');
-                    // Fallback to stored leafIndex approach
-                    actualIndex = storedLeafIndex;
-                    pathIndices = new Array(20).fill(0).map((_, i) => (actualIndex >> i) & 1);
-                    pathElements = new Array(20).fill(0n);
-                    computedRoot = crypto.computeMerkleRoot(commitment, pathIndices, pathElements);
-                }
-            } else {
-                // No cached commitments - use zeros (only works for first deposit)
-                console.warn('[Withdraw] No cached commitments found, using zeros');
-                actualIndex = storedLeafIndex;
-                pathIndices = new Array(20).fill(0).map((_, i) => (actualIndex >> i) & 1);
-                pathElements = new Array(20).fill(0n);
-                computedRoot = crypto.computeMerkleRoot(commitment, pathIndices, pathElements);
+            if (actualIndex === -1) {
+                console.warn('[Withdraw] Commitment not found in cache!');
+                // If not found, we might need to sync
+                throw new Error('Commitment not found in local cache. Please click "Force Re-sync" and try again.');
             }
 
+            // Verify if storedLeafIndex matches
+            if (storedLeafIndex !== -1 && storedLeafIndex !== actualIndex) {
+                console.warn(`[Withdraw] Leaf index mismatch! stored=${storedLeafIndex}, foundInCache=${actualIndex}`);
+                // We use the one found in cache as it's definitive for the current tree state
+                console.log(`[Withdraw] Using index ${actualIndex} from cache.`);
+            }
+
+            const path = tree.getPath(actualIndex);
+            const pathElements = path.pathElements;
+            const pathIndices = path.pathIndices;
+            const computedRoot = tree.getRoot();
+
+            console.log(`[Withdraw] Root: ${computedRoot.toString(16).substring(0, 16)}...`);
             console.log(`[Withdraw] Using leaf index: ${actualIndex}`);
 
             // 4. Build proof input
+            console.log('[Withdraw] Preparing proof input...');
+            let recipientBigInt: bigint;
+            try {
+                // IMPORTANT: The protocol uses Account Hash for the recipient, not the public key hex.
+                // We must derive the account hash to match what the contract expects and what ZK verifies.
+                const { getAccountHash } = await import('../utils/casper');
+                const accountHashHex = getAccountHash(recipient);
+                recipientBigInt = BigInt('0x' + accountHashHex);
+
+                console.log('[Withdraw] Derived Recipient Account Hash:', accountHashHex);
+                console.log('[Withdraw] Recipient BigInt:', recipientBigInt.toString().substring(0, 10) + '...');
+            } catch (err: any) {
+                console.error('[Withdraw] Failed to parse recipient public key:', recipient);
+                throw new Error(`Invalid recipient public key: ${err.message}. Please enter a valid Casper Public Key (starts with 01 or 02).`);
+            }
+
             const input = {
                 nullifier: nullifier,
                 secret: secret,
@@ -122,20 +170,32 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
                 pathIndices: pathIndices,
                 root: computedRoot,
                 nullifierHash: crypto.computeNullifierHash(nullifier),
-                recipient: BigInt(recipient.startsWith('0x') ? recipient : '0x' + recipient),
+                recipient: recipientBigInt,
                 relayer: 0n,
                 fee: 0n
             };
 
-            const { proof, publicSignals } = await snarkjs.groth16.fullProve(
-                input,
-                "/withdraw.wasm",
-                "/withdraw_final.zkey"
-            );
+            console.log('[Withdraw] Input prepared. Starting snarkjs.groth16.fullProve...');
+            console.log('[Withdraw] Proof artifacts:', { wasm: "/withdraw.wasm", zkey: "/withdraw_final.zkey" });
 
+            let proofResult;
+            try {
+                proofResult = await snarkjs.groth16.fullProve(
+                    input,
+                    "/withdraw.wasm",
+                    "/withdraw_final.zkey"
+                );
+                console.log('[Withdraw] Proof generated successfully!');
+            } catch (err: any) {
+                console.error('[Withdraw] SnarkJS proof generation failed!', err);
+                throw new Error(`Proof generation failed: ${err?.message || 'Check if wasm/zkey files exist in public folder'}`);
+            }
+
+            const { proof, publicSignals } = proofResult;
             setStatus('withdrawing');
 
             // 5. Create Transaction (SDK v5)
+            console.log('[Withdraw] Creating transaction...');
             const proofJson = JSON.stringify(proof);
             const proofBytes = new TextEncoder().encode(proofJson);
 
@@ -148,16 +208,18 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
             );
 
             // 6. Sign & Send
+            console.log('[Withdraw] Requesting signature...');
             const signedTransaction = await signTransaction(transaction, activeKey);
+            console.log('[Withdraw] Submitting transaction...');
             const transactionHash = await sendSignedTransaction(signedTransaction);
 
             console.log("Withdraw Transaction Hash:", transactionHash);
             setStatus('success');
 
-        } catch (e) {
-            console.error("Withdraw failed:", e);
+        } catch (e: any) {
+            console.error("Withdraw failed error object:", e);
             setStatus('idle');
-            alert("Withdraw failed. See console.");
+            alert(e.message || "Withdraw failed. See console for details.");
         } finally {
             setIsProcessing(false);
         }
@@ -233,66 +295,26 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
                 )}
             </button>
 
-            {/* CLI Cache Sync & Import */}
-            <div className="mt-4 p-4 bg-purple-500/10 border border-purple-500/20 rounded-xl space-y-3">
+            {/* On-Chain Sync Status */}
+            <div className="mt-4 p-4 bg-brand-500/10 border border-brand-500/20 rounded-xl space-y-3">
                 <div className="flex justify-between items-center">
-                    <div className="text-sm text-purple-300 font-medium">🔄 Merkle Tree Cache</div>
-                    <div className="text-xs text-purple-200/70 font-mono">
-                        {cachedCount} commitments cached
+                    <div className="text-sm text-brand-300 font-medium">🔄 On-Chain Sync</div>
+                    <div className="text-xs text-brand-200/70 font-mono">
+                        {cachedCount} commitments historical
                     </div>
                 </div>
 
-                {showImport ? (
-                    <div className="space-y-2">
-                        <p className="text-xs text-purple-200/70">
-                            Paste CLI cache from: <code className="bg-black/30 px-1 rounded">cli/.commitments_eab05369.json</code>
-                        </p>
-                        <textarea
-                            value={importInput}
-                            onChange={(e) => setImportInput(e.target.value)}
-                            placeholder='Paste JSON array: ["commitment1", "commitment2", ...]'
-                            className="w-full bg-black/30 border border-purple-500/20 rounded p-2 text-xs font-mono text-purple-300 h-20 resize-none"
-                        />
-                        <div className="flex space-x-2">
-                            <button
-                                onClick={handleImportCommitments}
-                                className="flex-1 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 rounded text-xs font-medium text-purple-300 transition-all flex items-center justify-center"
-                            >
-                                <Upload className="w-3 h-3 mr-1" /> Import
-                            </button>
-                            <button
-                                onClick={() => setShowImport(false)}
-                                className="py-2 px-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded text-xs font-medium text-gray-400 transition-all"
-                            >
-                                Cancel
-                            </button>
-                        </div>
-                    </div>
-                ) : (
-                    <div className="flex space-x-2">
-                        <button
-                            onClick={() => setShowImport(true)}
-                            className="flex-1 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 rounded text-xs font-medium text-purple-300 transition-all flex items-center justify-center"
-                        >
-                            <Download className="w-3 h-3 mr-1" /> Import CLI Cache
-                        </button>
-                    </div>
-                )}
+                <button
+                    onClick={handleSync}
+                    disabled={isProcessing}
+                    className="w-full py-2 bg-brand-500/20 hover:bg-brand-500/30 border border-brand-500/30 rounded-xl text-xs font-medium text-brand-300 transition-all flex items-center justify-center disabled:opacity-50"
+                >
+                    {isProcessing ? <div className="w-3 h-3 border-2 border-brand-300/30 border-t-brand-300 rounded-full animate-spin mr-1"></div> : "🔄"} Force Re-sync from Explorer
+                </button>
 
-                <p className="text-xs text-purple-200/50 leading-relaxed">
-                    ⚠️ Frontend cache must match on-chain state. Import CLI cache if you deposited via CLI.
+                <p className="text-[10px] text-gray-500 leading-relaxed text-center px-2">
+                    Synced automatically from the Casper blockchain.
                 </p>
-            </div>
-
-            {/* CLI Tool Guidance */}
-            <div className="mt-4 p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl">
-                <div className="text-sm text-blue-300 font-medium mb-2">💡 CLI Tool Recommended</div>
-                <p className="text-xs text-blue-200/70 leading-relaxed">
-                    For reliable withdrawals with ZK proof generation:
-                </p>
-                <code className="block mt-2 p-2 bg-black/30 rounded text-xs font-mono text-blue-300 break-all">
-                    cd cli && npm start -- withdraw --node https://node.testnet.casper.network --contract CONTRACT_HASH --secret SECRET_FILE
-                </code>
             </div>
         </div>
     );

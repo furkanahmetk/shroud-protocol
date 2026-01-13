@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowDownCircle, Copy, Check } from 'lucide-react';
 import { CryptoUtils } from '../utils/crypto';
-import { createDepositTransaction, createDepositSessionTransaction, sendSignedTransaction, CONTRACT_HASH } from '../utils/casper';
+import { createDepositTransaction, createDepositSessionTransaction, sendSignedTransaction, CONTRACT_HASH, fetchContractEvents } from '../utils/casper';
 import { useWallet } from '../hooks/useWallet';
 
 interface DepositProps {
@@ -16,6 +16,23 @@ export default function Deposit({ isConnected, activeKey }: DepositProps) {
     const [copied, setCopied] = useState(false);
     const { signTransaction, balance } = useWallet();
 
+    // Sync from chain on mount to ensure local index is correct
+    React.useEffect(() => {
+        const sync = async () => {
+            console.log('[Deposit] Syncing history from chain...');
+            try {
+                const chainData = await fetchContractEvents(CONTRACT_HASH);
+                if (chainData && chainData.length > 0) {
+                    const key = 'shroud_commitments_' + CONTRACT_HASH.substring(0, 8);
+                    localStorage.setItem(key, JSON.stringify(chainData));
+                }
+            } catch (e) {
+                console.error('[Deposit] Sync failed', e);
+            }
+        };
+        sync();
+    }, []);
+
     const handleDeposit = async () => {
         if (!isConnected || !activeKey) return;
         setIsProcessing(true);
@@ -26,11 +43,6 @@ export default function Deposit({ isConnected, activeKey }: DepositProps) {
             await crypto.init();
             const { nullifier, secret } = crypto.generateSecrets();
             const commitment = crypto.computeCommitment(nullifier, secret);
-
-            // 2. Save commitment to local cache for later withdrawal
-            // This is done BEFORE the transaction to ensure we have the leafIndex
-            const leafIndex = crypto.saveCommitmentToCache(CONTRACT_HASH, commitment);
-            console.log('[Deposit] Commitment cached at leafIndex:', leafIndex);
 
             // 3. Fetch Session WASM
             const wasmResponse = await fetch('/deposit_session.wasm');
@@ -47,7 +59,12 @@ export default function Deposit({ isConnected, activeKey }: DepositProps) {
             const transactionHash = await sendSignedTransaction(signedTransactionJson);
             console.log("Deposit Transaction Hash:", transactionHash);
 
-            // 7. Show Secret to User (including leafIndex for withdrawal)
+            // 7. Save commitment to local cache ONLY after successful submission
+            // This prevents "phantom" commitments from corrupting the tree if signing/submission fails
+            const leafIndex = crypto.saveCommitmentToCache(CONTRACT_HASH, commitment);
+            console.log('[Deposit] Commitment cached at leafIndex:', leafIndex);
+
+            // 8. Show Secret to User (including leafIndex for withdrawal)
             const secretString = JSON.stringify({
                 nullifier: nullifier.toString(),
                 secret: secret.toString(),
