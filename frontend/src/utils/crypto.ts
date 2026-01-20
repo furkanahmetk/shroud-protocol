@@ -3,9 +3,16 @@ import { buildMimc7 } from 'circomlibjs';
 const TREE_LEVELS = 20;
 const STORAGE_KEY_PREFIX = 'shroud_commitments_';
 
+// CRITICAL: Must match contract's ZERO_VALUE = U256::zero()
+const ZERO_VALUE = 0n;
+
 /**
- * MerkleTree implementation matching the on-chain contract
- * Tracks path elements for proof generation
+ * MerkleTree implementation that EXACTLY matches the on-chain contract's
+ * incremental insertion algorithm using filled_subtrees.
+ * 
+ * CRITICAL: The contract uses an incremental algorithm that produces DIFFERENT
+ * roots than standard full-tree building. We must cache paths during insert
+ * and return them from getPath, matching how the contract computes roots.
  */
 export class MerkleTree {
     private mimc: any;
@@ -13,7 +20,8 @@ export class MerkleTree {
     private filledSubtrees: bigint[];
     private nextIndex: number;
     private roots: bigint[];
-    private pathCache: Map<number, { pathElements: bigint[]; pathIndices: number[] }>;
+    // Cache path AND corresponding root for each leaf
+    private pathCache: Map<number, { pathElements: bigint[]; pathIndices: number[]; root: bigint }>;
 
     constructor(mimc: any, levels: number = TREE_LEVELS) {
         this.mimc = mimc;
@@ -34,6 +42,10 @@ export class MerkleTree {
         return this.mimc.F.toObject(res);
     }
 
+    /**
+     * Insert a leaf using the EXACT same algorithm as the contract.
+     * Caches the path at insert time for later retrieval.
+     */
     insert(leaf: bigint): number {
         const leafIndex = this.nextIndex;
         const pathElements: bigint[] = [];
@@ -71,8 +83,8 @@ export class MerkleTree {
             currentIndex = Math.floor(currentIndex / 2);
         }
 
-        // Store the path for this leaf
-        this.pathCache.set(leafIndex, { pathElements, pathIndices });
+        // Store the path AND the root for this leaf
+        this.pathCache.set(leafIndex, { pathElements, pathIndices, root: currentLevelHash });
 
         // Store the root (keep last 30 roots like the contract)
         this.roots.push(currentLevelHash);
@@ -84,6 +96,9 @@ export class MerkleTree {
         return leafIndex;
     }
 
+    /**
+     * Get the latest root (after all inserts)
+     */
     getRoot(): bigint {
         if (this.roots.length === 0) {
             return 0n;
@@ -91,19 +106,25 @@ export class MerkleTree {
         return this.roots[this.roots.length - 1];
     }
 
-    getPath(leafIndex: number): { pathElements: bigint[]; pathIndices: number[] } {
+    /**
+     * Get the path for a specific leaf index.
+     * Returns the path that was cached at insert time, along with the corresponding root.
+     * IMPORTANT: Use the returned root, not getRoot(), to ensure path-root consistency.
+     */
+    getPath(leafIndex: number): { pathElements: bigint[]; pathIndices: number[]; root: bigint } {
         const cached = this.pathCache.get(leafIndex);
         if (cached) {
             return cached;
         }
         // Fallback: return zeros (shouldn't happen if insert was called)
+        console.warn(`[MerkleTree] No cached path for index ${leafIndex}, returning zeros`);
         const pathElements: bigint[] = [];
         const pathIndices: number[] = [];
         for (let i = 0; i < this.levels; i++) {
             pathElements.push(0n);
             pathIndices.push(0);
         }
-        return { pathElements, pathIndices };
+        return { pathElements, pathIndices, root: 0n };
     }
 }
 

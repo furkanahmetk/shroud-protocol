@@ -45,9 +45,11 @@ export async function withdrawCommand(
         const path = tree.getPath(ourIndex);
         pathElements = path.pathElements;
         pathIndices = path.pathIndices;
-        root = tree.getRoot();
+        root = path.root; // Use the root that matches this path
         actualIndex = ourIndex;
         console.log(`   ✅ Synced with blockchain (index: ${actualIndex})`);
+        console.log(`   📊 Path root: ${root.toString(16).substring(0, 16)}...`);
+        console.log(`   📊 Latest tree root: ${tree.getRoot().toString(16).substring(0, 16)}...`);
     } else {
         // Fallback for very new deposits that might not have indexed yet
         console.log('   ⚠️ Commitment not found on-chain, using cached leafIndex fallback');
@@ -60,7 +62,7 @@ export async function withdrawCommand(
         const path = tree.getPath(leafIndex);
         pathElements = path.pathElements;
         pathIndices = path.pathIndices;
-        root = tree.getRoot();
+        root = path.root; // Use path.root for consistency
         actualIndex = leafIndex;
     }
 

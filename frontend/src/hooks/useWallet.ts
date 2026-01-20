@@ -1,6 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Transaction, PublicKey, Deploy } from 'casper-js-sdk';
 import { getBalance } from '../utils/casper';
+
+import { SigningLock } from '../utils/signingLock';
 
 export interface WalletState {
     isConnected: boolean;
@@ -26,6 +28,12 @@ export const useWallet = () => {
     }, []);
 
     const updateBalance = useCallback(async (activeKey: string) => {
+        // Skip balance update if signing is in progress
+        if (SigningLock.isLocked()) {
+            console.log('[useWallet] Skipping balance update - signing in progress');
+            return;
+        }
+
         try {
             const balance = await getBalance(activeKey);
             setWalletState(prev => ({ ...prev, balance }));
@@ -36,6 +44,12 @@ export const useWallet = () => {
 
     useEffect(() => {
         const checkConnection = async () => {
+            // Skip connection check if signing is in progress
+            if (SigningLock.isLocked()) {
+                console.log('[useWallet] Skipping connection check - signing in progress');
+                return;
+            }
+
             const provider = getProvider();
 
             if (provider) {
@@ -76,7 +90,9 @@ export const useWallet = () => {
 
         const handleActiveKeyChanged = (event: any) => {
             console.log("Active key changed:", event.detail);
-            checkConnection();
+            if (!SigningLock.isLocked()) {
+                checkConnection();
+            }
         };
 
         const handleDisconnected = () => {
@@ -84,7 +100,9 @@ export const useWallet = () => {
         };
 
         const handleConnected = () => {
-            checkConnection();
+            if (!SigningLock.isLocked()) {
+                checkConnection();
+            }
         };
 
         if (typeof window !== 'undefined') {
@@ -150,6 +168,10 @@ export const useWallet = () => {
         const provider = getProvider();
         if (!provider) throw new Error("Wallet not connected");
 
+        // Pause background requests during signing to prevent interference
+        SigningLock.acquire();
+        console.log('[useWallet] Signing started - pausing background requests');
+
         try {
             let transactionJsonString: string;
 
@@ -171,7 +193,7 @@ export const useWallet = () => {
                 transactionJsonString = JSON.stringify(deployJson);
             }
 
-            console.log("Requesting wallet signature with:", transactionJsonString);
+            console.log("Requesting wallet signature...");
 
             // @ts-ignore - The types might be slightly off for the provider
             const signResult = await provider.sign(transactionJsonString, signingPublicKeyHex);
@@ -212,6 +234,10 @@ export const useWallet = () => {
             console.error("Signing failed:", e);
             console.dir(e);
             throw new Error(`Signing failed: ${e.message || 'Unknown error'}`);
+        } finally {
+            // Resume background requests after signing completes (success or failure)
+            SigningLock.release();
+            console.log('[useWallet] Signing finished - resuming background requests');
         }
     };
 

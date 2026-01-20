@@ -10,7 +10,8 @@ export class MerkleTree {
     private filledSubtrees: bigint[];
     private nextIndex: number;
     private roots: bigint[];
-    private pathCache: Map<number, { pathElements: bigint[]; pathIndices: number[] }>;
+    // Cache path AND corresponding root for each leaf
+    private pathCache: Map<number, { pathElements: bigint[]; pathIndices: number[]; root: bigint }>;
 
     constructor(mimc: any, levels: number = TREE_LEVELS) {
         this.mimc = mimc;
@@ -68,8 +69,8 @@ export class MerkleTree {
             currentIndex = Math.floor(currentIndex / 2);
         }
 
-        // Store the path for this leaf
-        this.pathCache.set(leafIndex, { pathElements, pathIndices });
+        // Store the path AND the root for this leaf
+        this.pathCache.set(leafIndex, { pathElements, pathIndices, root: currentLevelHash });
 
         // Store the root
         this.roots.push(currentLevelHash);
@@ -88,7 +89,12 @@ export class MerkleTree {
         return this.roots[this.roots.length - 1];
     }
 
-    getPath(leafIndex: number): { pathElements: bigint[]; pathIndices: number[] } {
+    /**
+     * Get the path for a specific leaf index.
+     * Returns the path that was cached at insert time, along with the corresponding root.
+     * IMPORTANT: Use the returned root to ensure path-root consistency.
+     */
+    getPath(leafIndex: number): { pathElements: bigint[]; pathIndices: number[]; root: bigint } {
         const cached = this.pathCache.get(leafIndex);
         if (cached) {
             return cached;
@@ -100,7 +106,7 @@ export class MerkleTree {
             pathElements.push(0n);
             pathIndices.push(0);
         }
-        return { pathElements, pathIndices };
+        return { pathElements, pathIndices, root: 0n };
     }
 }
 

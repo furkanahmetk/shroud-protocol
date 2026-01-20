@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { CONTRACT_HASH, fetchContractEvents } from '../utils/casper';
 import { CryptoUtils } from '../utils/crypto';
+import { SigningLock } from '../utils/signingLock';
 
 interface CommitmentContextType {
     commitments: bigint[];
@@ -33,6 +34,10 @@ export function CommitmentProvider({ children }: { children: ReactNode }) {
     // Polling every 60 seconds
     useEffect(() => {
         const interval = setInterval(() => {
+            if (SigningLock.isLocked()) {
+                console.log('[CommitmentContext] Skipping poll - signing in progress');
+                return;
+            }
             console.log('[CommitmentContext] Polling for new events...');
             sync(true); // silent sync
         }, 60000);
@@ -41,6 +46,12 @@ export function CommitmentProvider({ children }: { children: ReactNode }) {
     }, []);
 
     const sync = async (silent = false) => {
+        // Skip sync if signing is in progress
+        if (SigningLock.isLocked()) {
+            console.log('[CommitmentContext] Skipping sync - signing in progress');
+            return;
+        }
+
         if (!silent) setIsSyncing(true);
         setError(null);
 
