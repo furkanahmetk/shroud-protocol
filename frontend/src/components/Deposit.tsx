@@ -44,22 +44,27 @@ export default function Deposit({ isConnected, activeKey }: DepositProps) {
             const transactionHash = await sendSignedTransaction(signedTransactionJson);
             console.log("Deposit Transaction Hash:", transactionHash);
 
-            // 7. Save commitment to local cache ONLY after successful submission
-            // This prevents "phantom" commitments from corrupting the tree if signing/submission fails
-            const leafIndex = crypto.saveCommitmentToCache(CONTRACT_HASH, commitment);
-            console.log('[Deposit] Commitment cached at leafIndex:', leafIndex);
-
-            // 8. Show Secret to User (including leafIndex for withdrawal)
+            // 7. Create secret JSON for user
+            // IMPORTANT: We do NOT save to local cache here to avoid race conditions
+            // with concurrent deposits. The leaf index will be determined at withdrawal
+            // time by syncing from the blockchain.
+            // 
+            // The leafIndex is marked as 'pending' because the on-chain transaction
+            // needs to be confirmed and then synced. The withdrawal process will
+            // automatically find the correct index by matching the commitment.
             const secretString = JSON.stringify({
                 nullifier: nullifier.toString(),
                 secret: secret.toString(),
                 commitment: commitment.toString(),
-                leafIndex: leafIndex
+                leafIndex: 'pending', // Will be resolved at withdrawal via on-chain sync
+                transactionHash: transactionHash,
+                timestamp: new Date().toISOString()
             }, null, 2); // Pretty print for the file
 
+            console.log('[Deposit] Secret generated. Leaf index will be resolved at withdrawal via sync.');
             setSecret(secretString);
 
-            // 9. Automatic Download
+            // 8. Automatic Download
             downloadSecret(secretString, commitment.toString());
 
         } catch (e) {
