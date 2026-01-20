@@ -333,32 +333,79 @@ const getMainPurse = async (contractHash: string): Promise<string> => {
 /**
  * Fetch all protocol activity (deposits and withdrawals)
  */
-export const fetchProtocolActivity = async (contractHash: string) => {
+/**
+ * Fetch all protocol activity (deposits and withdrawals)
+ * OPTIMIZATION: Only fetch activity newer than minTimestamp
+ */
+export const fetchProtocolActivity = async (contractHash: string, minTimestamp: number = 0) => {
     const commitments: string[] = [];
     const withdrawalsByHash = new Map<string, any>();
 
+    // Track the latest timestamp we see in this batch to return it
+    let maxSeenTimestamp = minTimestamp;
+
     try {
         const mainPurse = await getMainPurse(contractHash);
-        console.log(`[Casper] Fetching transfers for purse: ${mainPurse}`);
+        console.log(`[Casper] Fetching transfers for purse: ${mainPurse} (newer than ${new Date(minTimestamp).toISOString()})`);
 
         let allTransfers: any[] = [];
         let page = 1;
         let hasMore = true;
 
-        while (hasMore && page <= 10) {
+        while (hasMore && page <= 50) { // Increased cap since we break early now
             const response = await explorerCall(`/purses/${mainPurse}/transfers?page_size=100&page=${page}`);
             const data = response.data || [];
-            allTransfers = [...allTransfers, ...data];
-            hasMore = data.length === 100;
+
+            if (data.length === 0) break;
+
+            // Filter data and check for stop condition
+            const newTransfers = [];
+            for (const t of data) {
+                const tDate = new Date(t.timestamp).getTime();
+                if (tDate > minTimestamp) {
+                    newTransfers.push(t);
+                    if (tDate > maxSeenTimestamp) maxSeenTimestamp = tDate;
+                } else {
+                    // We reached old data!
+                    hasMore = false;
+                    // Don't break here because data might not be perfectly sorted within the page? 
+                    // Usually it is. But safe to just filtering rest.
+                }
+            }
+
+            allTransfers = [...allTransfers, ...newTransfers];
+
+            // If we didn't add all items from this page, it means we hit the stop condition
+            if (newTransfers.length < data.length) {
+                hasMore = false;
+            } else {
+                hasMore = data.length === 100; // standard pagination check
+            }
+
             page++;
         }
 
-        allTransfers.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        // SORT by Block Height to match on-chain Merkle Tree execution order.
+        // Timestamp sorting is unreliable (drift, same-block collisions).
+        allTransfers.sort((a, b) => {
+            if (a.block_height !== b.block_height) {
+                return a.block_height - b.block_height;
+            }
+            // Same block? Use transfer_index if available (or assume API order reversed?)
+            // Usually API returns descending. Check specific IDs/indices if needed.
+            // For now, block_height is the primary correctness factor.
+            return 0;
+        });
 
         const uniqueHashes = Array.from(new Set(allTransfers.map((t: any) => t.deploy_hash))) as string[];
-        console.log(`[Casper] Processing ${uniqueHashes.length} unique successful transfers...`);
+        if (uniqueHashes.length > 0) {
+            console.log(`[Casper] Processing ${uniqueHashes.length} NEW transfers...`);
+        }
 
         for (const hash of uniqueHashes) {
+            // Throttle to avoid rate limits (cspr.live/server proxy limits)
+            await new Promise(resolve => setTimeout(resolve, 200));
+
             try {
                 const deploy = await explorerCall(`/deploys/${hash}`);
                 const data = deploy.data;
@@ -400,7 +447,8 @@ export const fetchProtocolActivity = async (contractHash: string) => {
 
     return {
         deposits: commitments,
-        withdrawals: Array.from(withdrawalsByHash.values()).sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+        withdrawals: Array.from(withdrawalsByHash.values()).sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()),
+        maxTimestamp: maxSeenTimestamp
     };
 };
 

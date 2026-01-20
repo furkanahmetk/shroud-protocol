@@ -44,18 +44,18 @@ The frontend features a **Premium Dark Theme** designed for a modern, immersive 
 ## 🏗️ Architecture
 
 The protocol consists of three main components:
-
-```mermaid
-graph TD
-    User[User] -->|Deposit| Frontend
-    User -->|Withdraw| Frontend
-    Frontend -->|Interacts| Contract[Smart Contract (Odra)]
-    Frontend -->|Generates Proof| Circuits[ZK Circuits (Circom)]
-    Contract -->|Verifies Proof| Verifier[Groth16 Verifier]
-    Contract -->|Manages| MerkleTree[Merkle Tree]
-```
-
-- **Smart Contracts (`contracts/`)**: Written in Rust using the Odra framework. Handles deposits, manages the Merkle Tree state, and verifies ZK proofs to authorize withdrawals.
+ 
+ ```mermaid
+ flowchart TD
+     User[User] -->|Deposit| Frontend
+     User -->|Withdraw| Frontend
+     Frontend -->|Interacts| Contract[Smart Contract (Odra)]
+     Frontend -->|Generates Proof| Circuits[ZK Circuits (Circom)]
+     Contract -->|Verifies Proof| Verifier[Groth16 Verifier]
+     Contract -->|Manages| MerkleTree[Merkle Tree]
+ ```
+ 
+ - **Smart Contracts (`contracts/`)**: Written in Rust using the Odra framework. Handles deposits, manages the Merkle Tree state, and verifies ZK proofs to authorize withdrawals.
 - **Circuits (`circuits/`)**: Written in Circom. Defines the constraints for the ZK proof, ensuring that the user knows the secret corresponding to a valid leaf in the Merkle Tree.
 - **Frontend (`frontend/`)**: A Next.js web application featuring a **Premium Dark Theme** with a "Cosmic" aesthetic. It manages the user's wallet connection, generates secrets, computes ZK proofs in the browser using `snarkjs`, and submits transactions.
 - **CLI (`cli/`)**: A TypeScript-based command-line tool for automated interactions and testing.

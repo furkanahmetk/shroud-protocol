@@ -147,7 +147,28 @@ export default function Docs() {
                                         <li>Node.js v18+</li>
                                         <li>Rust v1.70+ (for contracts)</li>
                                         <li>Casper Wallet Extension</li>
+                                        <li>Casper Wallet Extension</li>
                                     </ul>
+
+                                    <h3 className="text-xl font-bold text-white mt-6">Protocol Error Codes</h3>
+                                    <div className="bg-black/30 p-4 rounded-xl border border-white/5 space-y-3">
+                                        <div className="grid grid-cols-12 gap-2 text-sm">
+                                            <div className="col-span-1 font-mono text-red-400">1</div>
+                                            <div className="col-span-11"><span className="font-bold">InvalidAmount</span>: Deposit amount mismatch.</div>
+
+                                            <div className="col-span-1 font-mono text-red-400">2</div>
+                                            <div className="col-span-11"><span className="font-bold">DuplicateCommitment</span>: This deposit has already been processed.</div>
+
+                                            <div className="col-span-1 font-mono text-red-400">3</div>
+                                            <div className="col-span-11"><span className="font-bold">AlreadySpent</span>: This secret has already been withdrawn (Double Spend prevented).</div>
+
+                                            <div className="col-span-1 font-mono text-red-400">4</div>
+                                            <div className="col-span-11"><span className="font-bold">UnknownRoot</span>: The Merkle Root in your proof is not in the contract's history. <br /><span className="text-gray-500 italic">Fix: Clear browser cache and refresh to sync the latest tree.</span></div>
+
+                                            <div className="col-span-1 font-mono text-red-400">5</div>
+                                            <div className="col-span-11"><span className="font-bold">InvalidProof</span>: The ZK-SNARK verification failed.</div>
+                                        </div>
+                                    </div>
 
                                     <h3 className="text-xl font-bold text-white mt-6">Installation</h3>
                                     <div className="bg-black/30 p-4 rounded-xl font-mono text-sm text-gray-300 border border-white/5">
