@@ -27,6 +27,8 @@ import {
     // Add other types as needed
 } from 'casper-js-sdk';
 import blake from 'blakejs';
+import { RequestQueue, QueueTask, QueueProgress } from './requestQueue';
+import { SyncProgress } from './syncProgress';
 
 // Use proxy to avoid CORS in browser
 const NODE_URL = typeof window !== 'undefined' ? '/api/proxy' : 'https://node.testnet.casper.network/rpc';
@@ -443,6 +445,248 @@ export const fetchProtocolActivity = async (contractHash: string, minTimestamp: 
         }
     } catch (e: any) {
         console.warn('[Casper] Explorer activity sync failed:', e.message);
+    }
+
+    return {
+        deposits: commitments,
+        withdrawals: Array.from(withdrawalsByHash.values()).sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()),
+        maxTimestamp: maxSeenTimestamp
+    };
+};
+
+/** Progress callback type for optimized sync */
+export type SyncProgressCallback = (progress: {
+    phase: 'fetching_transfers' | 'fetching_deploys' | 'processing';
+    current: number;
+    total: number;
+    message: string;
+}) => void;
+
+/**
+ * Fetch all protocol activity (deposits and withdrawals) - OPTIMIZED VERSION
+ * Uses parallel requests with rate limiting for significantly faster sync.
+ *
+ * @param contractHash - The contract hash to sync
+ * @param minTimestamp - Only fetch activity newer than this timestamp
+ * @param onProgress - Optional callback for progress updates
+ * @param abortSignal - Optional AbortSignal to cancel the operation
+ */
+export const fetchProtocolActivityOptimized = async (
+    contractHash: string,
+    minTimestamp: number = 0,
+    onProgress?: SyncProgressCallback,
+    abortSignal?: AbortSignal
+) => {
+    const commitments: string[] = [];
+    const withdrawalsByHash = new Map<string, any>();
+    let maxSeenTimestamp = minTimestamp;
+
+    // Create request queue with optimized settings
+    const queue = new RequestQueue({
+        concurrency: 5,
+        minDelay: 100,
+        maxRetries: 3,
+        baseBackoffMs: 500,
+        maxBackoffMs: 10000,
+        circuitBreakerThreshold: 5,
+        circuitResetMs: 30000
+    });
+
+    try {
+        const mainPurse = await getMainPurse(contractHash);
+        console.log(`[Casper] Optimized sync for purse: ${mainPurse} (newer than ${new Date(minTimestamp).toISOString()})`);
+
+        // Check abort before starting
+        if (abortSignal?.aborted) {
+            throw new Error('Sync aborted');
+        }
+
+        // Phase 1: Fetch transfers
+        onProgress?.({
+            phase: 'fetching_transfers',
+            current: 0,
+            total: 0,
+            message: 'Fetching transfer records...'
+        });
+
+        let allTransfers: any[] = [];
+        let page = 1;
+        let hasMore = true;
+
+        while (hasMore && page <= 50) {
+            if (abortSignal?.aborted) {
+                throw new Error('Sync aborted');
+            }
+
+            const response = await explorerCall(`/purses/${mainPurse}/transfers?page_size=100&page=${page}`);
+            const data = response.data || [];
+
+            if (data.length === 0) break;
+
+            const newTransfers = [];
+            for (const t of data) {
+                const tDate = new Date(t.timestamp).getTime();
+                if (tDate > minTimestamp) {
+                    newTransfers.push(t);
+                    if (tDate > maxSeenTimestamp) maxSeenTimestamp = tDate;
+                } else {
+                    hasMore = false;
+                }
+            }
+
+            allTransfers = [...allTransfers, ...newTransfers];
+
+            onProgress?.({
+                phase: 'fetching_transfers',
+                current: allTransfers.length,
+                total: 0, // Unknown total
+                message: `Found ${allTransfers.length} transfers...`
+            });
+
+            if (newTransfers.length < data.length) {
+                hasMore = false;
+            } else {
+                hasMore = data.length === 100;
+            }
+
+            page++;
+        }
+
+        // Sort by block height for deterministic Merkle tree order
+        allTransfers.sort((a, b) => {
+            if (a.block_height !== b.block_height) {
+                return a.block_height - b.block_height;
+            }
+            return 0;
+        });
+
+        const uniqueHashes = Array.from(new Set(allTransfers.map((t: any) => t.deploy_hash))) as string[];
+
+        if (uniqueHashes.length === 0) {
+            console.log('[Casper] No new transfers found.');
+            return {
+                deposits: commitments,
+                withdrawals: [],
+                maxTimestamp: maxSeenTimestamp
+            };
+        }
+
+        console.log(`[Casper] Processing ${uniqueHashes.length} NEW transfers in parallel...`);
+
+        // Phase 2: Fetch deploys in parallel
+        onProgress?.({
+            phase: 'fetching_deploys',
+            current: 0,
+            total: uniqueHashes.length,
+            message: `Processing 0/${uniqueHashes.length} deploys...`
+        });
+
+        // Create sorted map to preserve block height order
+        const hashToBlockHeight = new Map<string, number>();
+        for (const t of allTransfers) {
+            if (!hashToBlockHeight.has(t.deploy_hash)) {
+                hashToBlockHeight.set(t.deploy_hash, t.block_height);
+            }
+        }
+
+        // Create tasks for parallel execution
+        const tasks: QueueTask<{ hash: string; deploy: any }>[] = uniqueHashes.map(hash => ({
+            id: hash,
+            execute: async (signal?: AbortSignal) => {
+                if (signal?.aborted) throw new Error('Aborted');
+                const deploy = await explorerCall(`/deploys/${hash}`);
+                return { hash, deploy };
+            }
+        }));
+
+        // Process all deploys in parallel
+        const results = await queue.processAll(
+            tasks,
+            (progress: QueueProgress) => {
+                onProgress?.({
+                    phase: 'fetching_deploys',
+                    current: progress.completed,
+                    total: progress.total,
+                    message: `Processing ${progress.completed}/${progress.total} deploys...`
+                });
+            },
+            abortSignal
+        );
+
+        // Phase 3: Process results (maintain block height order)
+        onProgress?.({
+            phase: 'processing',
+            current: 0,
+            total: results.length,
+            message: 'Building commitment list...'
+        });
+
+        // Sort results by block height to maintain deterministic order
+        const sortedResults = results
+            .filter(r => r.success && r.data)
+            .sort((a, b) => {
+                const heightA = hashToBlockHeight.get(a.id) ?? 0;
+                const heightB = hashToBlockHeight.get(b.id) ?? 0;
+                return heightA - heightB;
+            });
+
+        let processedCount = 0;
+        for (const result of sortedResults) {
+            const { hash, deploy } = result.data!;
+            const data = deploy.data;
+            const success = data?.status === 'processed' && !data?.error_message;
+
+            if (!success) continue;
+
+            const args = data?.args || data?.session?.args || data?.session?.StoredContractByHash?.args;
+
+            if (args) {
+                // Identify Deposit
+                const commitmentValue = args.commitment?.parsed ||
+                    (Array.isArray(args) ? args.find((a: any) => a.name === 'commitment' || a[0] === 'commitment')?.parsed : null);
+
+                if (commitmentValue) {
+                    commitments.push(commitmentValue.toString());
+                } else {
+                    // Identify Withdrawal
+                    const nullifierValue = args.nullifier_hash?.parsed ||
+                        (Array.isArray(args) ? args.find((a: any) => a.name === 'nullifier_hash' || a[0] === 'nullifier_hash')?.parsed : null);
+
+                    if (nullifierValue || data?.entry_point === 'withdraw' || data?.session?.StoredVersionedContractByHash?.entry_point === 'withdraw') {
+                        withdrawalsByHash.set(hash, {
+                            hash: hash,
+                            timestamp: data.timestamp,
+                            nullifier: nullifierValue?.toString() || 'unknown',
+                            recipient: args.recipient?.parsed || 'unknown'
+                        });
+                    }
+                }
+            }
+
+            processedCount++;
+            if (processedCount % 10 === 0) {
+                onProgress?.({
+                    phase: 'processing',
+                    current: processedCount,
+                    total: sortedResults.length,
+                    message: `Processed ${processedCount}/${sortedResults.length} deploys`
+                });
+            }
+        }
+
+        // Log failed requests
+        const failedCount = results.filter(r => !r.success).length;
+        if (failedCount > 0) {
+            console.warn(`[Casper] ${failedCount} deploy fetches failed (will be retried on next sync)`);
+        }
+
+    } catch (e: any) {
+        if (e.message === 'Sync aborted') {
+            console.log('[Casper] Sync was aborted');
+            throw e;
+        }
+        console.warn('[Casper] Optimized sync failed:', e.message);
+        throw e;
     }
 
     return {

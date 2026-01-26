@@ -1,14 +1,21 @@
 import React, { useState } from 'react';
-import { ArrowDownCircle, Copy, Check } from 'lucide-react';
+import { ArrowDownCircle, Copy, Check, X } from 'lucide-react';
 import { CryptoUtils } from '../utils/crypto';
 import { createDepositSessionTransaction, createDepositSessionTransaction as _deprecated, sendSignedTransaction, CONTRACT_HASH } from '../utils/casper';
 import { useWallet } from '../hooks/useWallet';
 import { useCommitment } from '../context/CommitmentContext';
+import { SyncProgressTracker } from '../utils/syncProgress';
 
 interface DepositProps {
     isConnected: boolean;
     activeKey: string | null;
 }
+
+// Helper to format ETA
+const formatETA = (ms: number | null): string => {
+    if (ms === null || ms <= 0) return '';
+    return SyncProgressTracker.formatTime(ms);
+};
 
 export default function Deposit({ isConnected, activeKey }: DepositProps) {
     const [amount] = useState('100');
@@ -16,7 +23,7 @@ export default function Deposit({ isConnected, activeKey }: DepositProps) {
     const [secret, setSecret] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
     const { signTransaction, balance } = useWallet();
-    const { isSyncing } = useCommitment();
+    const { isSyncing, syncProgress, syncErrors, cancelSync } = useCommitment();
 
     const handleDeposit = async () => {
         if (!isConnected || !activeKey) return;
@@ -143,6 +150,24 @@ export default function Deposit({ isConnected, activeKey }: DepositProps) {
                             {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4 text-gray-500" />}
                         </button>
                     </div>
+                    {(() => {
+                        try {
+                            const parsed = JSON.parse(secret);
+                            if (parsed.transactionHash) {
+                                return (
+                                    <a
+                                        href={`https://testnet.cspr.live/deploy/${parsed.transactionHash}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="block text-center text-xs text-brand-400 hover:text-brand-300 transition-colors"
+                                    >
+                                        View deposit transaction on explorer →
+                                    </a>
+                                );
+                            }
+                        } catch { }
+                        return null;
+                    })()}
                     <button
                         onClick={() => setSecret(null)}
                         className="w-full py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-medium transition-all text-gray-400 hover:text-white shadow-sm"
@@ -151,27 +176,72 @@ export default function Deposit({ isConnected, activeKey }: DepositProps) {
                     </button>
                 </div>
             ) : (
-                <button
-                    onClick={handleDeposit}
-                    disabled={isProcessing || isSyncing || !isConnected}
-                    className="w-full py-4 btn-primary rounded-xl flex justify-center items-center group disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                    {isProcessing ? (
-                        <span className="animate-pulse flex items-center">
-                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2"></div>
-                            Processing...
-                        </span>
-                    ) : !isConnected ? (
-                        <span>Connect Wallet to Deposit</span>
-                    ) : isSyncing ? (
-                        <span className="animate-pulse">Using Global Sync...</span>
-                    ) : (
-                        <>
-                            <ArrowDownCircle className="w-5 h-5 mr-2 group-hover:animate-bounce" />
-                            Deposit 100 CSPR
-                        </>
+                <>
+                    <button
+                        onClick={handleDeposit}
+                        disabled={isProcessing || isSyncing || !isConnected}
+                        className="w-full py-4 btn-primary rounded-xl flex justify-center items-center group disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {isProcessing ? (
+                            <span className="animate-pulse flex items-center">
+                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2"></div>
+                                Processing...
+                            </span>
+                        ) : !isConnected ? (
+                            <span>Connect Wallet to Deposit</span>
+                        ) : isSyncing ? (
+                            <span className="animate-pulse flex items-center">
+                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2"></div>
+                                {syncProgress && syncProgress.total > 0
+                                    ? `Syncing ${syncProgress.current}/${syncProgress.total}...`
+                                    : 'Syncing...'}
+                            </span>
+                        ) : (
+                            <>
+                                <ArrowDownCircle className="w-5 h-5 mr-2 group-hover:animate-bounce" />
+                                Deposit 100 CSPR
+                            </>
+                        )}
+                    </button>
+
+                    {/* Sync Progress Bar */}
+                    {isSyncing && syncProgress && syncProgress.total > 0 && (
+                        <div className="mt-3 space-y-2">
+                            <div className="flex justify-between items-center text-xs">
+                                <span className="text-gray-400">
+                                    {syncProgress.phase === 'fetching_transfers' && 'Fetching transfers...'}
+                                    {syncProgress.phase === 'fetching_deploys' && 'Processing deploys...'}
+                                    {syncProgress.phase === 'processing' && 'Building tree...'}
+                                </span>
+                                <div className="flex items-center gap-2">
+                                    {syncProgress.eta && (
+                                        <span className="text-gray-500">
+                                            ~{formatETA(syncProgress.eta)}
+                                        </span>
+                                    )}
+                                    <button
+                                        onClick={cancelSync}
+                                        className="text-gray-500 hover:text-red-400 transition-colors"
+                                        title="Cancel sync"
+                                    >
+                                        <X className="w-3 h-3" />
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
+                                <div
+                                    className="bg-brand-500 h-full rounded-full transition-all duration-300"
+                                    style={{ width: `${Math.min((syncProgress.current / syncProgress.total) * 100, 100)}%` }}
+                                />
+                            </div>
+                            {syncErrors.length > 0 && (
+                                <div className="text-xs text-yellow-400/70">
+                                    {syncErrors.length} error(s) - sync will continue
+                                </div>
+                            )}
+                        </div>
                     )}
-                </button>
+                </>
             )}
 
             <div className="text-xs text-center text-gray-500 font-medium">

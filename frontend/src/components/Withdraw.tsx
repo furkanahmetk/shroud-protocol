@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowUpCircle, Download, Upload } from 'lucide-react';
+import { ArrowUpCircle, Download, Upload, X } from 'lucide-react';
 import { CryptoUtils } from '../utils/crypto';
 import { createWithdrawTransaction, sendSignedTransaction, CONTRACT_HASH } from '../utils/casper';
 import { useWallet } from '../hooks/useWallet';
 import { useCommitment } from '../context/CommitmentContext';
+import { SyncProgressTracker } from '../utils/syncProgress';
+import { loadFromStorage, saveToStorage } from '../utils/storage';
 const snarkjs = require('snarkjs');
 
 interface WithdrawProps {
@@ -11,31 +13,38 @@ interface WithdrawProps {
     activeKey: string | null;
 }
 
+// Helper to format ETA
+const formatETA = (ms: number | null): string => {
+    if (ms === null || ms <= 0) return '';
+    return SyncProgressTracker.formatTime(ms);
+};
+
 export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
     const [secretInput, setSecretInput] = useState('');
     const [recipient, setRecipient] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
     const [status, setStatus] = useState<'idle' | 'proving' | 'withdrawing' | 'success'>('idle');
+    const [txHash, setTxHash] = useState<string | null>(null);
     const [showImport, setShowImport] = useState(false);
     const [importInput, setImportInput] = useState('');
     const { signTransaction } = useWallet();
-    const { commitments, isSyncing, forceSync } = useCommitment();
+    const { commitments, isSyncing, syncProgress, syncErrors, forceSync, cancelSync } = useCommitment();
 
     // Import commitments from CLI cache JSON
     const handleImportCommitments = () => {
         try {
-            const commitments = JSON.parse(importInput);
-            if (!Array.isArray(commitments)) {
+            const importedCommitments = JSON.parse(importInput);
+            if (!Array.isArray(importedCommitments)) {
                 throw new Error('Input must be a JSON array');
             }
 
-            // Store directly to localStorage
-            const key = 'shroud_commitments_' + CONTRACT_HASH.substring(0, 8);
-            localStorage.setItem(key, JSON.stringify(commitments));
+            // Convert to bigint and save using versioned storage
+            const commitmentsBigInt = importedCommitments.map((c: string) => BigInt(c));
+            saveToStorage(CONTRACT_HASH, commitmentsBigInt, Date.now());
 
             setImportInput('');
             setShowImport(false);
-            alert(`Successfully imported ${commitments.length} commitments!`);
+            alert(`Successfully imported ${importedCommitments.length} commitments!`);
         } catch (e: any) {
             alert('Failed to import: ' + e.message);
         }
@@ -86,15 +95,12 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
 
             // 4. Load all commitments from global context and rebuild tree
             console.log('[Withdraw] Loading commitments from global context...');
-            // Re-read commitments after sync (use fresh data from localStorage)
-            const key = 'shroud_commitments_' + CONTRACT_HASH.substring(0, 8);
+            // Re-read commitments after sync (use fresh data from versioned storage)
             let allCommitments: bigint[] = [];
             try {
-                const stored = localStorage.getItem(key);
-                if (stored) {
-                    const data = JSON.parse(stored);
-                    allCommitments = data.map((c: string) => BigInt(c));
-                }
+                const storageData = loadFromStorage(CONTRACT_HASH);
+                allCommitments = storageData.commitments;
+                console.log(`[Withdraw] Loaded ${allCommitments.length} commitments from v${storageData.version} storage`);
             } catch (e) {
                 console.error('[Withdraw] Failed to load commitments from cache:', e);
             }
@@ -224,6 +230,7 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
             const transactionHash = await sendSignedTransaction(signedTransaction);
 
             console.log("Withdraw Transaction Hash:", transactionHash);
+            setTxHash(transactionHash);
             setStatus('success');
 
         } catch (e: any) {
@@ -245,11 +252,28 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
                     <h3 className="text-3xl font-bold text-white tracking-tight">Withdrawal Submitted!</h3>
                     <p className="text-gray-400">Transaction has been sent to the network.</p>
                 </div>
+                {txHash && (
+                    <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-2">
+                        <p className="text-xs text-gray-500">Transaction Hash</p>
+                        <a
+                            href={`https://testnet.cspr.live/deploy/${txHash}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-brand-400 hover:text-brand-300 font-mono text-sm break-all transition-colors"
+                        >
+                            {txHash}
+                        </a>
+                        <p className="text-[10px] text-gray-500 mt-2">
+                            Click to view on explorer. Wait for confirmation to verify success.
+                        </p>
+                    </div>
+                )}
                 <button
                     onClick={() => {
                         setStatus('idle');
                         setSecretInput('');
                         setRecipient('');
+                        setTxHash(null);
                     }}
                     className="mt-6 px-8 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-medium transition-all text-gray-300 hover:text-white shadow-sm hover:shadow-md"
                 >
@@ -309,16 +333,76 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
                 <div className="flex justify-between items-center">
                     <div className="text-sm text-brand-300 font-medium">🔄 On-Chain Sync</div>
                     <div className="text-xs text-brand-200/70 font-mono">
-                        {commitments.length} commitments historical
+                        {commitments.length} commitments
                     </div>
                 </div>
 
+                {/* Progress bar when syncing */}
+                {isSyncing && syncProgress && syncProgress.total > 0 && (
+                    <div className="space-y-2">
+                        <div className="flex justify-between items-center text-xs">
+                            <span className="text-brand-200/70">
+                                {syncProgress.phase === 'fetching_transfers' && 'Fetching transfers...'}
+                                {syncProgress.phase === 'fetching_deploys' && `Processing ${syncProgress.current}/${syncProgress.total}...`}
+                                {syncProgress.phase === 'processing' && 'Building tree...'}
+                            </span>
+                            <div className="flex items-center gap-2">
+                                {syncProgress.eta && syncProgress.eta > 0 && (
+                                    <span className="text-brand-200/50">
+                                        ~{formatETA(syncProgress.eta)}
+                                    </span>
+                                )}
+                                <button
+                                    onClick={cancelSync}
+                                    className="text-brand-200/50 hover:text-red-400 transition-colors"
+                                    title="Cancel sync"
+                                >
+                                    <X className="w-3 h-3" />
+                                </button>
+                            </div>
+                        </div>
+                        <div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
+                            <div
+                                className="bg-brand-400 h-full rounded-full transition-all duration-300"
+                                style={{ width: `${Math.min((syncProgress.current / syncProgress.total) * 100, 100)}%` }}
+                            />
+                        </div>
+                        {syncErrors.length > 0 && (
+                            <div className="text-[10px] text-yellow-400/70 text-center">
+                                {syncErrors.length} error(s) occurred - sync continues
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Sync status message when not syncing */}
+                {!isSyncing && syncProgress?.phase === 'complete' && (
+                    <div className="text-xs text-green-400/70 text-center">
+                        ✓ Sync complete
+                    </div>
+                )}
+
+                {!isSyncing && syncProgress?.phase === 'error' && (
+                    <div className="text-xs text-red-400/70 text-center">
+                        ⚠ Last sync failed - try again
+                    </div>
+                )}
+
                 <button
                     onClick={handleSync}
-                    disabled={isProcessing}
+                    disabled={isProcessing || isSyncing}
                     className="w-full py-2 bg-brand-500/20 hover:bg-brand-500/30 border border-brand-500/30 rounded-xl text-xs font-medium text-brand-300 transition-all flex items-center justify-center disabled:opacity-50"
                 >
-                    {isProcessing || isSyncing ? <div className="w-3 h-3 border-2 border-brand-300/30 border-t-brand-300 rounded-full animate-spin mr-1"></div> : "🔄"} Force Re-sync from Explorer
+                    {isProcessing || isSyncing ? (
+                        <>
+                            <div className="w-3 h-3 border-2 border-brand-300/30 border-t-brand-300 rounded-full animate-spin mr-1"></div>
+                            {syncProgress && syncProgress.total > 0
+                                ? `${syncProgress.current}/${syncProgress.total}`
+                                : 'Syncing...'}
+                        </>
+                    ) : (
+                        "🔄 Force Re-sync from Explorer"
+                    )}
                 </button>
 
                 <p className="text-[10px] text-gray-500 leading-relaxed text-center px-2">
