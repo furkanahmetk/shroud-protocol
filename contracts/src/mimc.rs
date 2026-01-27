@@ -127,11 +127,51 @@ fn mimc7_hash(x_in: Fr, k: Fr, constants: &[Fr]) -> Fr {
 
 pub fn multi_hash(inputs: &[Fr], constants: &[Fr]) -> Fr {
     let mut r = Fr::zero();
-    
+
     for input in inputs {
         let mimc_out = mimc7_hash(*input, r, constants);
         r = r + input + mimc_out;
     }
-    
+
     r
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ark_ff::BigInteger;
+
+    #[test]
+    fn test_mimc7_matches_circomlibjs() {
+        let constants = get_constants();
+
+        // Test 1: multiHash([0, 0])
+        // Expected from circomlibjs: 3089049976446759283073903078838002107081160427222305800976141688008169211302
+        let result1 = multi_hash(&[Fr::zero(), Fr::zero()], &constants);
+        let result1_bigint = result1.into_bigint();
+        let expected1 = "3089049976446759283073903078838002107081160427222305800976141688008169211302";
+        println!("multiHash([0, 0]):");
+        println!("  Expected: {}", expected1);
+        println!("  Got:      {}", result1_bigint);
+
+        // Test 2: multiHash([1, 2])
+        // Expected from circomlibjs: 5233261170300319370386085858846328736737478911451874673953613863492170606314
+        let one = Fr::from(1u64);
+        let two = Fr::from(2u64);
+        let result2 = multi_hash(&[one, two], &constants);
+        let result2_bigint = result2.into_bigint();
+        let expected2 = "5233261170300319370386085858846328736737478911451874673953613863492170606314";
+        println!("\nmultiHash([1, 2]):");
+        println!("  Expected: {}", expected2);
+        println!("  Got:      {}", result2_bigint);
+
+        // Convert expected strings to Fr for comparison
+        let expected1_fr = Fr::from_str(expected1).unwrap();
+        let expected2_fr = Fr::from_str(expected2).unwrap();
+
+        assert_eq!(result1, expected1_fr, "multiHash([0, 0]) mismatch!");
+        assert_eq!(result2, expected2_fr, "multiHash([1, 2]) mismatch!");
+
+        println!("\n✅ All MiMC7 tests passed! Implementation matches circomlibjs.");
+    }
 }

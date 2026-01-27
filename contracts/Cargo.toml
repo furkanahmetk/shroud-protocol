@@ -7,7 +7,7 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-odra = { version = "2.4.0" }
+odra = { version = "2.5.0" }
 
 casper-types = { version = "6.1.0", default-features = false }
 hex = { version = "0.4", default-features = false, features = ["alloc"] }
@@ -16,17 +16,18 @@ casper-event-standard = { version = "0.7.0", default-features = false }
 ark-bn254 = { version = "0.4.0", default-features = false, features = ["curve"] }
 ark-ff = { version = "0.4.0", default-features = false }
 ark-groth16 = { version = "0.4.0", default-features = false }
+ark-snark = { version = "0.4.0", default-features = false }
 ark-serialize = { version = "0.4.0", default-features = false }
 ark-std = { version = "0.4.0", default-features = false }
 
 [build-dependencies]
-odra-build = { version = "2.4.0", features = [], default-features = false }
+odra-build = { version = "2.5.0", features = [], default-features = false }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-odra-casper-wasm-env = "2.4.0"
+odra-casper-wasm-env = "2.5.0"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-odra-casper-livenet-env = "2.4.0"
+odra-casper-livenet-env = "2.5.0"
 
 [[bin]]
 name = "deploy"

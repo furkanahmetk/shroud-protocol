@@ -673,7 +673,32 @@ export const fetchProtocolActivityOptimized = async (
                     (Array.isArray(args) ? args.find((a: any) => a.name === 'commitment' || a[0] === 'commitment')?.parsed : null);
 
                 if (commitmentValue) {
-                    commitments.push(commitmentValue.toString());
+                    // IMPORTANT: Handle potential precision loss for large numbers
+                    // Explorer API may return parsed as a number, which loses precision for U256
+                    let commitmentStr: string;
+                    if (typeof commitmentValue === 'number') {
+                        console.warn(`[Casper] WARNING - commitment is a number, may have precision loss!`);
+                        console.warn(`[Casper] Raw number value: ${commitmentValue}`);
+                        // Try to get bytes representation instead if available
+                        const bytesHex = args.commitment?.bytes;
+                        if (bytesHex) {
+                            // Convert little-endian hex bytes to BigInt
+                            const cleanHex = bytesHex.replace(/^0x/, '');
+                            // Casper U256 is little-endian, need to reverse bytes
+                            const bytes = cleanHex.match(/.{2}/g) || [];
+                            const bigEndianHex = bytes.reverse().join('');
+                            commitmentStr = BigInt('0x' + bigEndianHex).toString();
+                            console.log(`[Casper] Reconstructed from bytes: ${commitmentStr}`);
+                        } else {
+                            commitmentStr = commitmentValue.toString();
+                        }
+                    } else {
+                        commitmentStr = commitmentValue.toString();
+                    }
+                    console.log(`[Casper] DEBUG - Found commitment in deploy ${hash}:`);
+                    console.log(`[Casper] DEBUG - Raw type: ${typeof commitmentValue}`);
+                    console.log(`[Casper] DEBUG - Final string: ${commitmentStr.substring(0, 50)}...`);
+                    commitments.push(commitmentStr);
                 } else {
                     // Identify Withdrawal
                     const nullifierValue = args.nullifier_hash?.parsed ||

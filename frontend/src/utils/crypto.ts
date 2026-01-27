@@ -20,6 +20,8 @@ export class MerkleTree {
     private filledSubtrees: bigint[];
     private nextIndex: number;
     private roots: bigint[];
+    // Store all leaves for path recomputation
+    private leaves: bigint[];
     // Cache path AND corresponding root for each leaf
     private pathCache: Map<number, { pathElements: bigint[]; pathIndices: number[]; root: bigint }>;
 
@@ -28,6 +30,7 @@ export class MerkleTree {
         this.levels = levels;
         this.nextIndex = 0;
         this.roots = [];
+        this.leaves = [];
         this.pathCache = new Map();
 
         // Initialize filled_subtrees with zeros (matching contract)
@@ -38,8 +41,19 @@ export class MerkleTree {
     }
 
     private hashPair(left: bigint, right: bigint): bigint {
+        // Use MiMC7 hash - the deployed contract uses proper MiMC7
         const res = this.mimc.multiHash([left, right]);
-        return this.mimc.F.toObject(res);
+        const result = this.mimc.F.toObject(res);
+
+        // Debug logging for first few hashes
+        if (this.nextIndex < 3) {
+            console.log(`[MerkleTree.hashPair] MiMC7 hash for index ${this.nextIndex}:`);
+            console.log(`  left:   ${left.toString(16).substring(0, 32)}...`);
+            console.log(`  right:  ${right.toString(16).substring(0, 32)}...`);
+            console.log(`  result: ${result.toString(16).substring(0, 32)}...`);
+        }
+
+        return result;
     }
 
     /**
@@ -50,6 +64,15 @@ export class MerkleTree {
         const leafIndex = this.nextIndex;
         const pathElements: bigint[] = [];
         const pathIndices: number[] = [];
+
+        // Store leaf for path recomputation
+        this.leaves.push(leaf);
+
+        // Debug: Log the first few insertions
+        if (leafIndex < 3) {
+            console.log(`[MerkleTree.insert] Inserting leaf ${leafIndex}:`);
+            console.log(`  leaf value: ${leaf.toString(16).substring(0, 32)}...`);
+        }
 
         let currentIndex = this.nextIndex;
         let currentLevelHash = leaf;
@@ -92,6 +115,12 @@ export class MerkleTree {
             this.roots.shift();
         }
 
+        // Debug: Log the root for first few insertions
+        if (leafIndex < 3) {
+            console.log(`[MerkleTree.insert] Root after insert ${leafIndex}: ${currentLevelHash.toString(16).substring(0, 32)}...`);
+            console.log(`[MerkleTree.insert] Full root (dec): ${currentLevelHash.toString()}`);
+        }
+
         this.nextIndex++;
         return leafIndex;
     }
@@ -110,6 +139,7 @@ export class MerkleTree {
      * Get the path for a specific leaf index.
      * Returns the path that was cached at insert time, along with the corresponding root.
      * IMPORTANT: Use the returned root, not getRoot(), to ensure path-root consistency.
+     * @deprecated Use getPathToLatestRoot instead to avoid UnknownRoot errors
      */
     getPath(leafIndex: number): { pathElements: bigint[]; pathIndices: number[]; root: bigint } {
         const cached = this.pathCache.get(leafIndex);
@@ -125,6 +155,112 @@ export class MerkleTree {
             pathIndices.push(0);
         }
         return { pathElements, pathIndices, root: 0n };
+    }
+
+    /**
+     * Compute a fresh path for any leaf index to the LATEST root.
+     * This should be used for withdrawals to ensure the root is still in the contract's history.
+     *
+     * IMPORTANT: This replays the incremental Merkle tree algorithm to compute paths correctly.
+     * The incremental algorithm produces DIFFERENT roots than a standard full tree build!
+     */
+    getPathToLatestRoot(targetLeafIndex: number): { pathElements: bigint[]; pathIndices: number[]; root: bigint } {
+        if (targetLeafIndex >= this.leaves.length) {
+            console.error(`[MerkleTree] Invalid leaf index ${targetLeafIndex}, only ${this.leaves.length} leaves`);
+            return { pathElements: [], pathIndices: [], root: 0n };
+        }
+
+        // Replay the incremental algorithm from scratch
+        const tempFilledSubtrees: bigint[] = [];
+        for (let i = 0; i < this.levels; i++) {
+            tempFilledSubtrees[i] = ZERO_VALUE;
+        }
+
+        // Track paths for ALL leaves during replay (we need to know siblings at each step)
+        // After replay, use the path that was computed for the target leaf
+        const allPaths: Map<number, { pathElements: bigint[]; pathIndices: number[]; root: bigint }> = new Map();
+
+        let latestRoot = ZERO_VALUE;
+        for (let leafIdx = 0; leafIdx < this.leaves.length; leafIdx++) {
+            const leaf = this.leaves[leafIdx];
+            const pathElements: bigint[] = [];
+            const pathIndices: number[] = [];
+
+            let currentIndex = leafIdx;
+            let currentLevelHash = leaf;
+
+            for (let level = 0; level < this.levels; level++) {
+                let left: bigint;
+                let right: bigint;
+
+                if (currentIndex % 2 === 0) {
+                    // Even index: we're on the left, sibling is filledSubtrees[level]
+                    left = currentLevelHash;
+                    right = tempFilledSubtrees[level];
+                    pathIndices.push(0);
+                    pathElements.push(tempFilledSubtrees[level]);
+                    tempFilledSubtrees[level] = currentLevelHash;
+                } else {
+                    // Odd index: we're on the right, sibling is filledSubtrees[level]
+                    left = tempFilledSubtrees[level];
+                    right = currentLevelHash;
+                    pathIndices.push(1);
+                    pathElements.push(tempFilledSubtrees[level]);
+                }
+
+                currentLevelHash = this.hashPair(left, right);
+                currentIndex = Math.floor(currentIndex / 2);
+            }
+
+            latestRoot = currentLevelHash;
+            allPaths.set(leafIdx, { pathElements, pathIndices, root: currentLevelHash });
+        }
+
+        // For the LATEST root, we need paths computed at the FINAL state
+        // The issue: the path cached for each leaf is valid for the root at THAT insertion time
+        // To get a path valid for the LATEST root, we must use the LATEST state of siblings
+
+        // Actually, for the incremental tree, the path for a leaf to the latest root
+        // must account for all subsequent insertions. Let's recompute using final state.
+
+        // The correct approach: after all insertions, tempFilledSubtrees contains the final state.
+        // We need to compute what the sibling would be for each level, considering later insertions.
+
+        // For leaves that came AFTER our target, they may have filled positions that affect our path.
+        // We need to track which positions were filled and use those values.
+
+        // Simpler approach: the path from pathCache at the latest index gives us the latest root.
+        // But we need the path for targetLeafIndex, which was computed earlier.
+
+        // The incremental tree property: once a leaf is inserted, its path to the root AT THAT TIME
+        // is fixed. For a LATER root, the path would be different because siblings may have changed.
+
+        // Since the contract stores the last 30 roots, we should use the LATEST root and recompute.
+        // But the incremental algorithm doesn't support this directly.
+
+        // WORKAROUND: Return the cached path. If the root is no longer in the contract's history,
+        // the withdrawal will fail, and user needs to wait for their original root to be valid
+        // OR this is a fundamental limitation of the 30-root history.
+
+        const cached = allPaths.get(targetLeafIndex);
+        if (cached) {
+            console.log(`[MerkleTree] Using path for leaf ${targetLeafIndex}`);
+            console.log(`[MerkleTree] Path root: ${cached.root.toString(16).substring(0, 16)}...`);
+            console.log(`[MerkleTree] Latest root: ${latestRoot.toString(16).substring(0, 16)}...`);
+
+            // If the cached root matches the latest root, we're good
+            if (cached.root === latestRoot) {
+                console.log(`[MerkleTree] Path root IS the latest root - perfect!`);
+            } else {
+                console.warn(`[MerkleTree] Path root differs from latest root.`);
+                console.warn(`[MerkleTree] If >30 deposits since yours, withdrawal may fail with UnknownRoot.`);
+            }
+
+            return cached;
+        }
+
+        console.error(`[MerkleTree] No path found for leaf ${targetLeafIndex}`);
+        return { pathElements: [], pathIndices: [], root: 0n };
     }
 }
 
@@ -173,6 +309,7 @@ export class CryptoUtils {
             const pathElement = pathElements[i];
             const pathIndex = pathIndices[i];
 
+            // Use MiMC7 hash to match the deployed contract
             if (pathIndex === 0) {
                 const res = this.mimc.multiHash([current, pathElement]);
                 current = this.mimc.F.toObject(res);

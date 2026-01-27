@@ -83,10 +83,10 @@ fn hash_pair(left: U256, right: U256, constants: &[Fr]) -> U256 {
     // Convert U256 to Fr using raw little-endian bytes (NO length prefix)
     let mut left_bytes = [0u8; 32];
     left.to_little_endian(&mut left_bytes);
-    
+
     let mut right_bytes = [0u8; 32];
     right.to_little_endian(&mut right_bytes);
-    
+
     // ark-bn254 from_le_bytes_mod_order
     let left_fr = Fr::from_le_bytes_mod_order(&left_bytes);
     let right_fr = Fr::from_le_bytes_mod_order(&right_bytes);
@@ -95,11 +95,60 @@ fn hash_pair(left: U256, right: U256, constants: &[Fr]) -> U256 {
 
     // Convert back to U256
     let res_bytes = res_fr.into_bigint().to_bytes_le();
-    
+
     // Safely construct U256 from bytes, handling potential length mismatch
     let mut padded_bytes = [0u8; 32];
     let len = res_bytes.len().min(32);
     padded_bytes[..len].copy_from_slice(&res_bytes[..len]);
-    
+
     U256::from_little_endian(&padded_bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_merkle_tree_root() {
+        let mut tree = MerkleTree::default();
+
+        // Insert a test commitment (same value we'll test in frontend)
+        // This is commitment = multiHash([1, 2]) from our MiMC test
+        let commitment = U256::from_dec_str(
+            "5233261170300319370386085858846328736737478911451874673953613863492170606314"
+        ).unwrap();
+
+        tree.insert(commitment);
+
+        let root = tree.get_last_root();
+        println!("Merkle root after inserting commitment:");
+        println!("  Commitment (dec): {}", commitment);
+        println!("  Root (dec):       {}", root);
+
+        // The frontend should produce the same root
+        // We'll print it here and compare manually
+        println!("\n--- Compare this root with frontend output ---");
+    }
+
+    #[test]
+    fn test_hash_pair_u256_conversion() {
+        let constants = mimc::get_constants();
+
+        // Test that hash_pair([0, 0]) matches multiHash([0, 0])
+        let zero = U256::zero();
+        let result = hash_pair(zero, zero, &constants);
+
+        // Expected from circomlibjs/Rust test: 3089049976446759283073903078838002107081160427222305800976141688008169211302
+        let expected = U256::from_dec_str(
+            "3089049976446759283073903078838002107081160427222305800976141688008169211302"
+        ).unwrap();
+
+        println!("hash_pair([0, 0]):");
+        println!("  Expected: {}", expected);
+        println!("  Got:      {}", result);
+
+        assert_eq!(result, expected, "hash_pair U256 conversion mismatch!");
+
+        println!("\n✅ hash_pair U256 conversion test passed!");
+    }
 }

@@ -1,0 +1,98 @@
+//! Hardcoded verification key for the withdraw circuit.
+//! Generated from circuits/verification_key.json using snarkjs.
+
+use ark_bn254::{Bn254, Fq2, G1Affine, G2Affine};
+use ark_ff::MontFp;
+use ark_groth16::VerifyingKey;
+use alloc::vec;
+use alloc::vec::Vec;
+
+/// Returns the hardcoded verification key for the withdraw circuit.
+/// This VK was exported from the trusted setup ceremony.
+pub fn get_verification_key() -> VerifyingKey<Bn254> {
+    // vk_alpha_1: G1 point
+    let alpha_g1 = G1Affine::new_unchecked(
+        MontFp!("797251847407359158669984055642760081336696999678462560031445068443355249099"),
+        MontFp!("10862366027069937312848197941720098715108850679756968678565779056856781661716"),
+    );
+
+    // vk_beta_2: G2 point
+    // snarkjs format: [[x_c0, x_c1], [y_c0, y_c1], [z_c0, z_c1]]
+    let beta_g2 = G2Affine::new_unchecked(
+        Fq2::new(
+            MontFp!("260545343225015469684097582051504760239302010691760967110100248269042424865"),
+            MontFp!("2395251185863426187572501207608285285640671348759991394982220964222100847696"),
+        ),
+        Fq2::new(
+            MontFp!("2578298239446515968065476252586071263891876250789067485696556616405464636275"),
+            MontFp!("3086254568535350385611334395019309893834294244997163101919034168224531723161"),
+        ),
+    );
+
+    // vk_gamma_2: G2 point (standard generator, used for verification equation)
+    let gamma_g2 = G2Affine::new_unchecked(
+        Fq2::new(
+            MontFp!("10857046999023057135944570762232829481370756359578518086990519993285655852781"),
+            MontFp!("11559732032986387107991004021392285783925812861821192530917403151452391805634"),
+        ),
+        Fq2::new(
+            MontFp!("8495653923123431417604973247489272438418190587263600148770280649306958101930"),
+            MontFp!("4082367875863433681332203403145435568316851327593401208105741076214120093531"),
+        ),
+    );
+
+    // vk_delta_2: G2 point
+    let delta_g2 = G2Affine::new_unchecked(
+        Fq2::new(
+            MontFp!("2432496750307355593869098499545584602537473669932174877598958947697968659438"),
+            MontFp!("1039418203132157260336982357931627723735940589697841603691454189078423707449"),
+        ),
+        Fq2::new(
+            MontFp!("14173069142524949312208677966638857918474791713165570398377980005800839422184"),
+            MontFp!("20498654490357138128514172581479410908689704974816241316193673145190818649606"),
+        ),
+    );
+
+    // IC: Array of G1 points for public input coefficients
+    // 6 points for 5 public inputs (root, nullifierHash, recipient, relayer, fee)
+    let gamma_abc_g1: Vec<G1Affine> = vec![
+        // IC[0] - constant term
+        G1Affine::new_unchecked(
+            MontFp!("21666293517511584796572786607705059919613281393668340938393636941855401215088"),
+            MontFp!("21031714559787191433949531781266925736738130972359533212555810538986793202468"),
+        ),
+        // IC[1] - root coefficient
+        G1Affine::new_unchecked(
+            MontFp!("9880827408543989258387361991247106351373586444903343774698146870544430480812"),
+            MontFp!("4574553986593682271413139214805211605509007580718548222916957930794332751359"),
+        ),
+        // IC[2] - nullifierHash coefficient
+        G1Affine::new_unchecked(
+            MontFp!("4221820760678295426065518165290577162889259692284790474566528169328972718121"),
+            MontFp!("26306492023208107204209664695069680511943614162531763321455859844984813044"),
+        ),
+        // IC[3] - recipient coefficient
+        G1Affine::new_unchecked(
+            MontFp!("13595168125215222476480087689927973308012870950728075666960563686500507642703"),
+            MontFp!("7963688002924715379230079254113266211328995488648692465986890848770731768558"),
+        ),
+        // IC[4] - relayer coefficient
+        G1Affine::new_unchecked(
+            MontFp!("4167052394926653421188351999429554299703760159348135753006530498410181881180"),
+            MontFp!("5704885330043465008774536157919523046532456737412582198821547900755624299493"),
+        ),
+        // IC[5] - fee coefficient
+        G1Affine::new_unchecked(
+            MontFp!("17413529261260855522616160345681494557124024682445826016304058092582811624640"),
+            MontFp!("12710347536302945999766488644131972289053750993238841861282754904354761311188"),
+        ),
+    ];
+
+    VerifyingKey {
+        alpha_g1,
+        beta_g2,
+        gamma_g2,
+        delta_g2,
+        gamma_abc_g1,
+    }
+}

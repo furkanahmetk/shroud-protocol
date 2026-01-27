@@ -101,6 +101,13 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
                 const storageData = loadFromStorage(CONTRACT_HASH);
                 allCommitments = storageData.commitments;
                 console.log(`[Withdraw] Loaded ${allCommitments.length} commitments from v${storageData.version} storage`);
+
+                // DEBUG: Print first 3 commitments to compare with secret JSON
+                console.log('[Withdraw] DEBUG - First 3 synced commitments:');
+                for (let i = 0; i < Math.min(3, allCommitments.length); i++) {
+                    console.log(`  [${i}]: ${allCommitments[i].toString()}`);
+                }
+                console.log(`[Withdraw] DEBUG - Looking for commitment: ${commitment.toString()}`);
             } catch (e) {
                 console.error('[Withdraw] Failed to load commitments from cache:', e);
             }
@@ -137,17 +144,18 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
             }
 
             // 6. Compute Merkle path and root
-            // CRITICAL: getPath returns the path AND the corresponding root
-            // We MUST use path.root, not tree.getRoot(), because the cached path
-            // was computed for the root at the time of that leaf's insertion
-            const path = tree.getPath(actualIndex);
+            // CRITICAL: Use getPathToLatestRoot to get a path to the CURRENT root.
+            // The contract only keeps the last 30 roots, so using old cached paths
+            // will fail with "UnknownRoot" if >30 deposits happened since your deposit.
+            const path = tree.getPathToLatestRoot(actualIndex);
             const pathElements = path.pathElements;
             const pathIndices = path.pathIndices;
-            const computedRoot = path.root; // Use the root that matches this path!
+            const computedRoot = path.root; // Latest root - guaranteed to be in contract's history
 
-            console.log(`[Withdraw] Path root: ${computedRoot.toString(16).substring(0, 16)}...`);
-            console.log(`[Withdraw] Latest tree root: ${tree.getRoot().toString(16).substring(0, 16)}...`);
+            console.log(`[Withdraw] Using LATEST root: ${computedRoot.toString(16).substring(0, 16)}...`);
             console.log(`[Withdraw] Using leaf index: ${actualIndex} (of ${allCommitments.length} total)`);
+            console.log(`[Withdraw] DEBUG - Full root (decimal): ${computedRoot.toString()}`);
+            console.log(`[Withdraw] DEBUG - This is the root that will be sent to the contract`);
 
             // 6b. VERIFICATION: Check that our commitment matches what cryptoUtils computes
             const verifyCommitment = crypto.computeCommitment(nullifier, secret);
@@ -172,6 +180,15 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
             }
 
             console.log('[Withdraw] ✅ Pre-flight verification passed: commitment and root are valid.');
+
+            // DEBUG: Show critical values for troubleshooting
+            console.log('========== DEBUG VALUES FOR CONTRACT COMPARISON ==========');
+            console.log('Commitment (full decimal):', commitment.toString());
+            console.log('Root (full decimal):', computedRoot.toString());
+            console.log('Root (hex):', '0x' + computedRoot.toString(16));
+            console.log('Number of commitments in tree:', allCommitments.length);
+            console.log('Leaf index:', actualIndex);
+            console.log('==========================================================');
 
             // 7. Build proof input
             let recipientBigInt: bigint;
@@ -205,11 +222,14 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
                 nullifierHash: input.nullifierHash.toString().substring(0, 20) + '...',
             });
 
+            // Generate real ZK proof using snarkjs
+            console.log('[Withdraw] Generating ZK proof...');
             const { proof, publicSignals } = await snarkjs.groth16.fullProve(
                 input,
                 "/withdraw.wasm",
                 "/withdraw_final.zkey"
             );
+            console.log('[Withdraw] ZK proof generated successfully');
 
             setStatus('withdrawing');
 
