@@ -44,15 +44,11 @@ impl ShroudProtocol {
 
     #[odra(payable)]
     pub fn deposit(&mut self, commitment: U256) {
-        // 1. Check amount
-        // 1. Check amount
-        // TODO: For mainnet, we need to verify the attached value. 
-        // In the current MVP with JS SDK, we cannot easily attach value to a stored contract call.
-        // We would need a session code proxy. For now, we trust the demo flow or assume 0 value for testing logic.
-        // let amount = self.env().attached_value();
-        // if amount != U512::from(DENOMINATION) {
-        //     self.env().revert(Error::InvalidAmount);
-        // }
+        // 1. Check amount - CRITICAL: Prevents zero-deposit attacks
+        let amount = self.env().attached_value();
+        if amount != U512::from(DENOMINATION) {
+            self.env().revert(Error::InvalidAmount);
+        }
 
         // 2. Check commitment uniqueness
         if self.commitments.get(&commitment).unwrap_or(false) {
