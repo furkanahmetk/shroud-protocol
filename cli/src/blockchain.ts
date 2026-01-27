@@ -1,6 +1,9 @@
 import { CasperClient, CLPublicKey, DeployUtil, RuntimeArgs, CLValueBuilder, Keys } from 'casper-js-sdk';
 import * as fs from 'fs';
 
+const NETWORK_NAME = process.env.CASPER_NETWORK_NAME || 'casper-test';
+const EXPLORER_API_URL = process.env.CASPER_EXPLORER_API_URL || 'https://api.testnet.cspr.live';
+
 export class BlockchainClient {
     private client: CasperClient;
     private contractHash: string;
@@ -38,7 +41,7 @@ export class BlockchainClient {
             const deploy = DeployUtil.makeDeploy(
                 new DeployUtil.DeployParams(
                     keyPair.publicKey,
-                    'casper-test',
+                    NETWORK_NAME,
                     1,
                     1800000
                 ),
@@ -60,7 +63,7 @@ export class BlockchainClient {
         const deploy = DeployUtil.makeDeploy(
             new DeployUtil.DeployParams(
                 keyPair.publicKey,
-                'casper-test',
+                NETWORK_NAME,
                 1,
                 1800000
             ),
@@ -102,7 +105,7 @@ export class BlockchainClient {
         const deploy = DeployUtil.makeDeploy(
             new DeployUtil.DeployParams(
                 keyPair.publicKey,
-                'casper-test',
+                NETWORK_NAME,
                 1,
                 1800000
             ),
@@ -156,9 +159,8 @@ export class BlockchainClient {
     }
 
     private async explorerCall(endpoint: string): Promise<any> {
-        const baseUrl = 'https://api.testnet.cspr.live';
         try {
-            const response = await fetch(`${baseUrl}${endpoint}`, {
+            const response = await fetch(`${EXPLORER_API_URL}${endpoint}`, {
                 headers: { 'Accept': 'application/json' }
             });
             if (!response.ok) {

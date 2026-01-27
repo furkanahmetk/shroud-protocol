@@ -33,6 +33,8 @@ deposit_secret*.json
 .commitments_*.json
 *.pem
 *.key
+*.secret*
+keys/secret_key.pem
 
 # IDEs
 .vscode/
@@ -53,9 +55,10 @@ casper_keys/
 # Git automation file
 .github/workflows/ci.yml
 
-# Local Dev Extras
+# Local Dev Extras - Sensitive files (NEVER commit)
 contracts/casper_livenet.env
 cli/cli_test_secret.json
+cli/*.secret.json
 cli/.commitments_*.json
 cli/test_explorer.js
 cli/verify_root.js

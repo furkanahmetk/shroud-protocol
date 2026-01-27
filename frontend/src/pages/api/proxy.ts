@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 const NODE_URL = process.env.NEXT_PUBLIC_NODE_URL || 'https://node.testnet.casper.network/rpc';
-const EXPLORER_API_URL = 'https://api.testnet.cspr.live';
+const EXPLORER_API_URL = process.env.NEXT_PUBLIC_EXPLORER_API_URL || 'https://api.testnet.cspr.live';
 
 // Simple in-memory cache: { url: { data, expiry } }
 const cache = new Map<string, { data: any, expiry: number }>();
