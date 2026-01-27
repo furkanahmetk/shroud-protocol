@@ -1,6 +1,6 @@
 import React from 'react';
 import Link from 'next/link';
-import { Shield } from 'lucide-react';
+import Image from 'next/image';
 
 export default function Footer() {
     return (
@@ -9,9 +9,13 @@ export default function Footer() {
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">
                     <div className="col-span-1 md:col-span-1">
                         <Link href="/" className="flex items-center space-x-2 mb-4 group cursor-pointer">
-                            <div className="bg-brand-600 p-1.5 rounded-lg group-hover:bg-brand-500 transition-colors">
-                                <Shield className="w-5 h-5 text-white" />
-                            </div>
+                            <Image
+                                src="/logo.png"
+                                alt="Shroud Protocol"
+                                width={32}
+                                height={32}
+                                className="group-hover:scale-105 transition-transform"
+                            />
                             <span className="text-lg font-bold text-white group-hover:text-brand-400 transition-colors">Shroud</span>
                         </Link>
                         <p className="text-gray-500 text-sm leading-relaxed">

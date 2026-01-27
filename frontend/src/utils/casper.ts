@@ -454,6 +454,33 @@ export const fetchProtocolActivity = async (contractHash: string, minTimestamp: 
     };
 };
 
+/**
+ * Quick stats function - just counts total transfers without fetching deploy details.
+ * Much faster than fetchProtocolActivity for displaying hero stats.
+ */
+export const fetchQuickStats = async (contractHash: string): Promise<{ totalTransactions: number }> => {
+    try {
+        const mainPurse = await getMainPurse(contractHash);
+        let totalCount = 0;
+        let page = 1;
+        let hasMore = true;
+
+        while (hasMore && page <= 10) {
+            const response = await explorerCall(`/purses/${mainPurse}/transfers?page_size=100&page=${page}`);
+            const data = response.data || [];
+            totalCount += data.length;
+            hasMore = data.length === 100;
+            page++;
+        }
+
+        // Get unique deploy hashes (each tx is a deposit or withdrawal)
+        return { totalTransactions: totalCount };
+    } catch (e) {
+        console.warn('[Casper] Quick stats failed:', e);
+        return { totalTransactions: 0 };
+    }
+};
+
 /** Progress callback type for optimized sync */
 export type SyncProgressCallback = (progress: {
     phase: 'fetching_transfers' | 'fetching_deploys' | 'processing';

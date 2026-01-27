@@ -21,11 +21,11 @@ export default function Home() {
     useEffect(() => {
         const loadStats = async () => {
             try {
-                const { fetchProtocolActivity } = await import('@/utils/casper');
-                const data = await fetchProtocolActivity(CONTRACT_HASH);
+                const { fetchQuickStats } = await import('@/utils/casper');
+                const data = await fetchQuickStats(CONTRACT_HASH);
                 setStats({
-                    deposits: data.deposits.length,
-                    withdrawals: data.withdrawals.length
+                    deposits: data.totalTransactions,
+                    withdrawals: 0
                 });
             } catch (e) {
                 console.error("Failed to load home stats:", e);

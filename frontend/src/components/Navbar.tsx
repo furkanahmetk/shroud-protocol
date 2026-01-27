@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter } from 'next/router';
-import { Shield, Wallet, Menu, X, ChevronDown, User, LogOut, RefreshCw, Copy, Check } from 'lucide-react';
+import { Wallet, Menu, X, ChevronDown, User, LogOut, RefreshCw, Copy, Check } from 'lucide-react';
 import { useWallet } from '@/hooks/useWallet';
 
 export default function Navbar() {
@@ -52,9 +53,13 @@ export default function Navbar() {
         <header className="fixed top-0 w-full z-50 bg-dark-bg/80 backdrop-blur-md border-b border-white/5">
             <div className="container mx-auto px-6 h-20 flex justify-between items-center">
                 <Link href="/" className="flex items-center space-x-3 cursor-pointer group">
-                    <div className="bg-gradient-to-br from-brand-600 to-accent-600 p-2 rounded-lg shadow-lg shadow-brand-500/20 group-hover:shadow-brand-500/40 transition-all duration-300">
-                        <Shield className="w-6 h-6 text-white" />
-                    </div>
+                    <Image
+                        src="/logo.png"
+                        alt="Shroud Protocol"
+                        width={40}
+                        height={40}
+                        className="group-hover:scale-105 transition-transform duration-300"
+                    />
                     <span className="text-xl font-bold tracking-tight text-white group-hover:text-brand-400 transition-colors">
                         Shroud Protocol
                     </span>
