@@ -52,7 +52,6 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
 
     const handleSync = async () => {
         setIsProcessing(true);
-        console.log('[Withdraw] Force-syncing via global context...');
         try {
             await forceSync();
             alert(`Synced! Total commitments: ${commitments.length}`);
@@ -84,32 +83,20 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
             const crypto = new CryptoUtils();
             await crypto.init();
 
-            // 3. Force sync from blockchain to get the latest commitments
-            // This is critical for resolving 'pending' leaf indices from concurrent deposits
-            console.log('[Withdraw] Force syncing from blockchain before withdrawal...');
-            setStatus('proving'); // Show loading state
+            // Force sync from blockchain to get the latest commitments
+            setStatus('proving');
             await forceSync();
 
             // Small delay to ensure state is updated
             await new Promise(resolve => setTimeout(resolve, 500));
 
-            // 4. Load all commitments from global context and rebuild tree
-            console.log('[Withdraw] Loading commitments from global context...');
-            // Re-read commitments after sync (use fresh data from versioned storage)
+            // Load all commitments and rebuild tree
             let allCommitments: bigint[] = [];
             try {
                 const storageData = loadFromStorage(CONTRACT_HASH);
                 allCommitments = storageData.commitments;
-                console.log(`[Withdraw] Loaded ${allCommitments.length} commitments from v${storageData.version} storage`);
-
-                // DEBUG: Print first 3 commitments to compare with secret JSON
-                console.log('[Withdraw] DEBUG - First 3 synced commitments:');
-                for (let i = 0; i < Math.min(3, allCommitments.length); i++) {
-                    console.log(`  [${i}]: ${allCommitments[i].toString()}`);
-                }
-                console.log(`[Withdraw] DEBUG - Looking for commitment: ${commitment.toString()}`);
             } catch (e) {
-                console.error('[Withdraw] Failed to load commitments from cache:', e);
+                // Failed to load from cache
             }
 
             if (allCommitments.length === 0) {
@@ -121,74 +108,35 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
             for (const c of allCommitments) {
                 tree.insert(c);
             }
-            console.log(`[Withdraw] Tree rebuilt with ${allCommitments.length} on-chain commitments`);
 
             // 5. Find our commitment in the synced on-chain data
             let actualIndex = allCommitments.findIndex(c => c === commitment);
 
             if (actualIndex === -1) {
-                console.warn('[Withdraw] Commitment not found in synced on-chain data!');
-                // Provide helpful error message
                 if (storedLeafIndex === -1) {
-                    // This was a 'pending' deposit - probably not confirmed yet
                     throw new Error('Your deposit has not been confirmed on-chain yet. Please wait a few minutes for the transaction to be processed, then try again.');
                 } else {
                     throw new Error('Commitment not found on-chain. Please click "Force Re-sync" to fetch the latest data and try again.');
                 }
             }
 
-            // Log if there was a mismatch (for debugging concurrent deposit issues)
-            if (storedLeafIndex !== -1 && storedLeafIndex !== actualIndex) {
-                console.warn(`[Withdraw] Leaf index corrected: stored=${storedLeafIndex}, actual=${actualIndex}`);
-                console.log(`[Withdraw] This can happen with concurrent deposits - using correct on-chain index.`);
-            }
-
-            // 6. Compute Merkle path and root
-            // CRITICAL: Use getPathToLatestRoot to get a path to the CURRENT root.
-            // The contract only keeps the last 30 roots, so using old cached paths
-            // will fail with "UnknownRoot" if >30 deposits happened since your deposit.
+            // Compute Merkle path and root
             const path = tree.getPathToLatestRoot(actualIndex);
             const pathElements = path.pathElements;
             const pathIndices = path.pathIndices;
             const computedRoot = path.root; // Latest root - guaranteed to be in contract's history
 
-            console.log(`[Withdraw] Using LATEST root: ${computedRoot.toString(16).substring(0, 16)}...`);
-            console.log(`[Withdraw] Using leaf index: ${actualIndex} (of ${allCommitments.length} total)`);
-            console.log(`[Withdraw] DEBUG - Full root (decimal): ${computedRoot.toString()}`);
-            console.log(`[Withdraw] DEBUG - This is the root that will be sent to the contract`);
-
-            // 6b. VERIFICATION: Check that our commitment matches what cryptoUtils computes
+            // Verify commitment matches
             const verifyCommitment = crypto.computeCommitment(nullifier, secret);
-            console.log(`[Withdraw] Stored commitment:   ${commitment.toString().substring(0, 20)}...`);
-            console.log(`[Withdraw] Computed commitment: ${verifyCommitment.toString().substring(0, 20)}...`);
-
             if (verifyCommitment !== commitment) {
-                console.error('[Withdraw] CRITICAL: Commitment mismatch! The secret/nullifier do not match the stored commitment.');
                 throw new Error('Commitment verification failed. The secret key may be corrupted.');
             }
 
-            // 6c. VERIFICATION: Reconstruct root from path to verify before sending to snarkjs
+            // Verify Merkle path reconstructs to expected root
             const reconstructedRoot = crypto.computeMerkleRoot(commitment, pathIndices, pathElements);
-            console.log(`[Withdraw] Tree root:          ${computedRoot.toString().substring(0, 20)}...`);
-            console.log(`[Withdraw] Reconstructed root: ${reconstructedRoot.toString().substring(0, 20)}...`);
-
             if (reconstructedRoot !== computedRoot) {
-                console.error('[Withdraw] CRITICAL: Root mismatch! Path does not reconstruct to the expected root.');
-                console.error(`[Withdraw] pathElements[0]: ${pathElements[0]?.toString().substring(0, 20)}...`);
-                console.error(`[Withdraw] pathIndices: ${pathIndices.slice(0, 5).join(', ')}...`);
                 throw new Error('Merkle path verification failed. The proof would fail on-chain. Please try Force Re-sync.');
             }
-
-            console.log('[Withdraw] ✅ Pre-flight verification passed: commitment and root are valid.');
-
-            // DEBUG: Show critical values for troubleshooting
-            console.log('========== DEBUG VALUES FOR CONTRACT COMPARISON ==========');
-            console.log('Commitment (full decimal):', commitment.toString());
-            console.log('Root (full decimal):', computedRoot.toString());
-            console.log('Root (hex):', '0x' + computedRoot.toString(16));
-            console.log('Number of commitments in tree:', allCommitments.length);
-            console.log('Leaf index:', actualIndex);
-            console.log('==========================================================');
 
             // 7. Build proof input
             let recipientBigInt: bigint;
@@ -213,23 +161,12 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
                 fee: 0n
             };
 
-            console.log('[Withdraw] Circuit inputs prepared:', {
-                nullifier: nullifier.toString().substring(0, 20) + '...',
-                secret: '***hidden***',
-                pathElementsCount: pathElements.length,
-                pathIndicesCount: pathIndices.length,
-                root: computedRoot.toString().substring(0, 20) + '...',
-                nullifierHash: input.nullifierHash.toString().substring(0, 20) + '...',
-            });
-
-            // Generate real ZK proof using snarkjs
-            console.log('[Withdraw] Generating ZK proof...');
+            // Generate ZK proof
             const { proof, publicSignals } = await snarkjs.groth16.fullProve(
                 input,
                 "/withdraw.wasm",
                 "/withdraw_final.zkey"
             );
-            console.log('[Withdraw] ZK proof generated successfully');
 
             setStatus('withdrawing');
 
@@ -249,7 +186,6 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
             const signedTransaction = await signTransaction(transaction, activeKey);
             const transactionHash = await sendSignedTransaction(signedTransaction);
 
-            console.log("Withdraw Transaction Hash:", transactionHash);
             setTxHash(transactionHash);
             setStatus('success');
 

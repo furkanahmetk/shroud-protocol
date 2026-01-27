@@ -265,19 +265,12 @@ const argsToJson = (args: Args): any[] => {
                 const key = entry[0];
                 const value = entry[1];
 
-                // Debug logging to help identify serialization issues
-                // console.log(`[argsToJson] Key: ${key}, Value type: ${value?.type?.typeName || value?.constructor?.name}`);
-
                 let json = toLegacyCLValueJson(value);
 
-                // Ensure we never have undefined in the result
                 if (json === undefined || json === null) {
-                    // console.warn(`[argsToJson] Warning: CLValue for key "${key}" serialized to null/undefined`);
-                    // Try a more aggressive fallback
                     json = value?.toString ? value.toString() : String(value);
                 }
 
-                // console.log(`[argsToJson] Serialized ${key}:`, JSON.stringify(json));
                 result.push([key, json]);
             }
         } catch (e) {
@@ -348,7 +341,6 @@ export const fetchProtocolActivity = async (contractHash: string, minTimestamp: 
 
     try {
         const mainPurse = await getMainPurse(contractHash);
-        console.log(`[Casper] Fetching transfers for purse: ${mainPurse} (newer than ${new Date(minTimestamp).toISOString()})`);
 
         let allTransfers: any[] = [];
         let page = 1;
@@ -400,9 +392,6 @@ export const fetchProtocolActivity = async (contractHash: string, minTimestamp: 
         });
 
         const uniqueHashes = Array.from(new Set(allTransfers.map((t: any) => t.deploy_hash))) as string[];
-        if (uniqueHashes.length > 0) {
-            console.log(`[Casper] Processing ${uniqueHashes.length} NEW transfers...`);
-        }
 
         for (const hash of uniqueHashes) {
             // Throttle to avoid rate limits (cspr.live/server proxy limits)
@@ -521,7 +510,6 @@ export const fetchProtocolActivityOptimized = async (
 
     try {
         const mainPurse = await getMainPurse(contractHash);
-        console.log(`[Casper] Optimized sync for purse: ${mainPurse} (newer than ${new Date(minTimestamp).toISOString()})`);
 
         // Check abort before starting
         if (abortSignal?.aborted) {
@@ -590,7 +578,6 @@ export const fetchProtocolActivityOptimized = async (
         const uniqueHashes = Array.from(new Set(allTransfers.map((t: any) => t.deploy_hash))) as string[];
 
         if (uniqueHashes.length === 0) {
-            console.log('[Casper] No new transfers found.');
             return {
                 deposits: commitments,
                 withdrawals: [],
@@ -598,7 +585,6 @@ export const fetchProtocolActivityOptimized = async (
             };
         }
 
-        console.log(`[Casper] Processing ${uniqueHashes.length} NEW transfers in parallel...`);
 
         // Phase 2: Fetch deploys in parallel
         onProgress?.({
@@ -688,16 +674,12 @@ export const fetchProtocolActivityOptimized = async (
                             const bytes = cleanHex.match(/.{2}/g) || [];
                             const bigEndianHex = bytes.reverse().join('');
                             commitmentStr = BigInt('0x' + bigEndianHex).toString();
-                            console.log(`[Casper] Reconstructed from bytes: ${commitmentStr}`);
                         } else {
                             commitmentStr = commitmentValue.toString();
                         }
                     } else {
                         commitmentStr = commitmentValue.toString();
                     }
-                    console.log(`[Casper] DEBUG - Found commitment in deploy ${hash}:`);
-                    console.log(`[Casper] DEBUG - Raw type: ${typeof commitmentValue}`);
-                    console.log(`[Casper] DEBUG - Final string: ${commitmentStr.substring(0, 50)}...`);
                     commitments.push(commitmentStr);
                 } else {
                     // Identify Withdrawal
@@ -734,7 +716,6 @@ export const fetchProtocolActivityOptimized = async (
 
     } catch (e: any) {
         if (e.message === 'Sync aborted') {
-            console.log('[Casper] Sync was aborted');
             throw e;
         }
         console.warn('[Casper] Optimized sync failed:', e.message);
@@ -752,7 +733,6 @@ export const fetchProtocolActivityOptimized = async (
  * Legacy wrapper for Merkle Tree sync (deposits only)
  */
 export const fetchContractEvents = async (contractHash: string): Promise<string[]> => {
-    console.log('[Casper] Synchronizing commitments for Merkle Tree...');
     const activity = await fetchProtocolActivity(contractHash);
     return activity.deposits;
 };
@@ -885,12 +865,9 @@ export const deployToLegacyJson = (deploy: Deploy): any => {
 };
 
 export const sendSignedTransaction = async (signedTransaction: Transaction | Deploy): Promise<string> => {
-    console.log('[sendSignedTransaction] Starting submission...');
-
     if (signedTransaction instanceof Transaction) {
         const txJson = signedTransaction.toJSON();
         const result = await rpcCall('account_put_transaction', { transaction: txJson });
-        console.log('[sendSignedTransaction] Transaction result:', result);
         return result.transaction_hash?.toString() || result.transactionHash?.toString();
     } else {
         const deployJson = Deploy.toJSON(signedTransaction) as any;
@@ -900,9 +877,7 @@ export const sendSignedTransaction = async (signedTransaction: Transaction | Dep
             deployJson.session.StoredVersionedContractByHash.version = null;
         }
 
-        console.log('[sendSignedTransaction] Submitting deploy via proxy:', deployJson?.hash);
         const result = await rpcCall('account_put_deploy', { deploy: deployJson });
-        console.log('[sendSignedTransaction] Deploy result:', result);
         return result.deploy_hash || result.deployHash;
     }
 };

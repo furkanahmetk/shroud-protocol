@@ -44,15 +44,6 @@ export class MerkleTree {
         // Use MiMC7 hash - the deployed contract uses proper MiMC7
         const res = this.mimc.multiHash([left, right]);
         const result = this.mimc.F.toObject(res);
-
-        // Debug logging for first few hashes
-        if (this.nextIndex < 3) {
-            console.log(`[MerkleTree.hashPair] MiMC7 hash for index ${this.nextIndex}:`);
-            console.log(`  left:   ${left.toString(16).substring(0, 32)}...`);
-            console.log(`  right:  ${right.toString(16).substring(0, 32)}...`);
-            console.log(`  result: ${result.toString(16).substring(0, 32)}...`);
-        }
-
         return result;
     }
 
@@ -67,12 +58,6 @@ export class MerkleTree {
 
         // Store leaf for path recomputation
         this.leaves.push(leaf);
-
-        // Debug: Log the first few insertions
-        if (leafIndex < 3) {
-            console.log(`[MerkleTree.insert] Inserting leaf ${leafIndex}:`);
-            console.log(`  leaf value: ${leaf.toString(16).substring(0, 32)}...`);
-        }
 
         let currentIndex = this.nextIndex;
         let currentLevelHash = leaf;
@@ -113,12 +98,6 @@ export class MerkleTree {
         this.roots.push(currentLevelHash);
         if (this.roots.length > 30) {
             this.roots.shift();
-        }
-
-        // Debug: Log the root for first few insertions
-        if (leafIndex < 3) {
-            console.log(`[MerkleTree.insert] Root after insert ${leafIndex}: ${currentLevelHash.toString(16).substring(0, 32)}...`);
-            console.log(`[MerkleTree.insert] Full root (dec): ${currentLevelHash.toString()}`);
         }
 
         this.nextIndex++;
@@ -216,46 +195,8 @@ export class MerkleTree {
             allPaths.set(leafIdx, { pathElements, pathIndices, root: currentLevelHash });
         }
 
-        // For the LATEST root, we need paths computed at the FINAL state
-        // The issue: the path cached for each leaf is valid for the root at THAT insertion time
-        // To get a path valid for the LATEST root, we must use the LATEST state of siblings
-
-        // Actually, for the incremental tree, the path for a leaf to the latest root
-        // must account for all subsequent insertions. Let's recompute using final state.
-
-        // The correct approach: after all insertions, tempFilledSubtrees contains the final state.
-        // We need to compute what the sibling would be for each level, considering later insertions.
-
-        // For leaves that came AFTER our target, they may have filled positions that affect our path.
-        // We need to track which positions were filled and use those values.
-
-        // Simpler approach: the path from pathCache at the latest index gives us the latest root.
-        // But we need the path for targetLeafIndex, which was computed earlier.
-
-        // The incremental tree property: once a leaf is inserted, its path to the root AT THAT TIME
-        // is fixed. For a LATER root, the path would be different because siblings may have changed.
-
-        // Since the contract stores the last 30 roots, we should use the LATEST root and recompute.
-        // But the incremental algorithm doesn't support this directly.
-
-        // WORKAROUND: Return the cached path. If the root is no longer in the contract's history,
-        // the withdrawal will fail, and user needs to wait for their original root to be valid
-        // OR this is a fundamental limitation of the 30-root history.
-
         const cached = allPaths.get(targetLeafIndex);
         if (cached) {
-            console.log(`[MerkleTree] Using path for leaf ${targetLeafIndex}`);
-            console.log(`[MerkleTree] Path root: ${cached.root.toString(16).substring(0, 16)}...`);
-            console.log(`[MerkleTree] Latest root: ${latestRoot.toString(16).substring(0, 16)}...`);
-
-            // If the cached root matches the latest root, we're good
-            if (cached.root === latestRoot) {
-                console.log(`[MerkleTree] Path root IS the latest root - perfect!`);
-            } else {
-                console.warn(`[MerkleTree] Path root differs from latest root.`);
-                console.warn(`[MerkleTree] If >30 deposits since yours, withdrawal may fail with UnknownRoot.`);
-            }
-
             return cached;
         }
 
@@ -341,8 +282,6 @@ export class CryptoUtils {
         const leafIndex = commitments.length;
         commitments.push(commitment.toString());
         localStorage.setItem(key, JSON.stringify(commitments));
-
-        console.log(`[CryptoUtils] Saved commitment to cache at index ${leafIndex}`);
         return leafIndex;
     }
 
@@ -356,11 +295,10 @@ export class CryptoUtils {
             const stored = localStorage.getItem(key);
             if (stored) {
                 const data = JSON.parse(stored);
-                console.log(`[CryptoUtils] Loaded ${data.length} commitments from cache`);
                 return data.map((c: string) => BigInt(c));
             }
         } catch (e) {
-            console.warn('[CryptoUtils] Failed to load commitments from cache:', e);
+            // Failed to load from cache
         }
 
         return [];

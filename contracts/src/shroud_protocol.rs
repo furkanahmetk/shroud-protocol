@@ -27,12 +27,7 @@ pub struct ShroudProtocol {
 #[odra::module]
 impl ShroudProtocol {
     pub fn init(&mut self) {
-        // self.merkle_tree.set(MerkleTree::default());
-        // self.nullifiers.set(Mapping::default());
-        // self.commitments.set(Mapping::default());
-        // self.roots.set(Mapping::default());
-        // // Initialize the first root as the default empty tree root?
-        // // For now we just start empty.
+        // No initialization needed - Odra handles defaults
     }
 
     /// Fund the contract's purse with CSPR for withdrawal payouts
