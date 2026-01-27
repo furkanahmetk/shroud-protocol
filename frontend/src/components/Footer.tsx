@@ -35,11 +35,6 @@ export default function Footer() {
                                     Withdraw
                                 </Link>
                             </li>
-                            <li>
-                                <Link href="/statistics" className="hover:text-brand-400 transition-colors">
-                                    Statistics
-                                </Link>
-                            </li>
                         </ul>
                     </div>
                     <div>
@@ -51,13 +46,8 @@ export default function Footer() {
                                 </Link>
                             </li>
                             <li>
-                                <a href="#" className="hover:text-brand-400 transition-colors">
+                                <a href="https://github.com/furkanahmetk/shroud-protocol" target="_blank" rel="noopener noreferrer" className="hover:text-brand-400 transition-colors">
                                     GitHub
-                                </a>
-                            </li>
-                            <li>
-                                <a href="#" className="hover:text-brand-400 transition-colors">
-                                    Audits
                                 </a>
                             </li>
                         </ul>
@@ -65,9 +55,12 @@ export default function Footer() {
                     <div>
                         <h4 className="font-bold text-white mb-4">Community</h4>
                         <ul className="space-y-2 text-sm text-gray-500">
-                            <li><a href="#" className="hover:text-brand-400 transition-colors">Discord</a></li>
-                            <li><a href="#" className="hover:text-brand-400 transition-colors">Twitter</a></li>
-                            <li><a href="https://t.me/shroud_protocol" target="_blank" rel="noopener noreferrer" className="hover:text-brand-400 transition-colors">Telegram</a></li>
+                            <li>
+                                <span className="text-gray-600 cursor-default">Discord <span className="text-xs">(Coming Soon)</span></span>
+                            </li>
+                            <li>
+                                <a href="https://t.me/shroud_protocol" target="_blank" rel="noopener noreferrer" className="hover:text-brand-400 transition-colors">Telegram</a>
+                            </li>
                         </ul>
                     </div>
                 </div>

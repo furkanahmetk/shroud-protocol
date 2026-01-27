@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/router';
-import { Wallet, Menu, X, ChevronDown, User, LogOut, RefreshCw, Copy, Check } from 'lucide-react';
+import { Wallet, Menu, X, ChevronDown, User, LogOut, RefreshCw, Copy, Check, Github } from 'lucide-react';
 import { useWallet } from '@/hooks/useWallet';
 
 export default function Navbar() {
@@ -80,6 +80,15 @@ export default function Navbar() {
                             {item.name}
                         </Link>
                     ))}
+                    <a
+                        href="https://github.com/furkanahmetk/shroud-protocol"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-gray-400 hover:text-white transition-colors"
+                        title="View on GitHub"
+                    >
+                        <Github className="w-5 h-5" />
+                    </a>
                     <div className="relative" ref={dropdownRef}>
                         <button
                             onClick={() => isConnected ? setIsDropdownOpen(!isDropdownOpen) : handleConnect()}
@@ -167,6 +176,15 @@ export default function Navbar() {
                                 {item.name}
                             </Link>
                         ))}
+                        <a
+                            href="https://github.com/furkanahmetk/shroud-protocol"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center text-base font-medium text-gray-400 hover:text-white transition-colors"
+                        >
+                            <Github className="w-5 h-5 mr-2" />
+                            GitHub
+                        </a>
                         <div className="space-y-2">
                             <button
                                 onClick={handleConnect}

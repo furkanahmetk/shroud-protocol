@@ -113,6 +113,12 @@ export default function Deposit({ isConnected, activeKey }: DepositProps) {
 
     return (
         <div className="space-y-6">
+            <div className="bg-blue-500/10 border border-blue-500/20 p-3 rounded-xl flex items-center gap-3">
+                <span className="text-lg">🧹</span>
+                <p className="text-xs text-blue-300/90">
+                    <span className="font-medium">Tip:</span> If something seems off, try clearing your browser cache or using incognito mode!
+                </p>
+            </div>
             <div className="bg-white/5 p-6 rounded-2xl border border-white/10">
                 <div className="flex justify-between mb-2">
                     <span className="text-gray-400 text-sm font-medium">Amount to Deposit</span>
