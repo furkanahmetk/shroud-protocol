@@ -106,7 +106,7 @@ export default function Home() {
                             <div className="relative z-10 w-full h-full">
                                 <div className="relative w-full h-full animate-float">
                                     <Image
-                                        src="/hero_shield_3d_1764582011240.png"
+                                        src="/logo.png"
                                         alt="Privacy Shield"
                                         fill
                                         className="object-contain drop-shadow-[0_0_50px_rgba(59,130,246,0.5)]"
