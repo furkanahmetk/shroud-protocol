@@ -35,12 +35,23 @@ const NODE_URL = typeof window !== 'undefined' ? '/api/proxy' : 'https://node.te
 
 // Helper to make raw RPC calls
 const rpcCall = async (method: string, params: any) => {
-    // Use local proxy to avoid CORS
+    const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+    };
+
+    if (typeof window !== 'undefined') {
+        try {
+            const savedSettings = localStorage.getItem('shroud_settings');
+            if (savedSettings) {
+                const settings = JSON.parse(savedSettings);
+                if (settings.rpcUrl) headers['x-custom-rpc-url'] = settings.rpcUrl;
+            }
+        } catch (e) { }
+    }
+
     const response = await fetch('/api/proxy', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({
             jsonrpc: '2.0',
             id: new Date().getTime(),
@@ -283,8 +294,21 @@ const argsToJson = (args: Args): any[] => {
 };
 
 const explorerCall = async (path: string) => {
+    const headers: Record<string, string> = {};
+
+    if (typeof window !== 'undefined') {
+        try {
+            const savedSettings = localStorage.getItem('shroud_settings');
+            if (savedSettings) {
+                const settings = JSON.parse(savedSettings);
+                if (settings.explorerUrl) headers['x-custom-explorer-url'] = settings.explorerUrl;
+            }
+        } catch (e) { }
+    }
+
     const response = await fetch(`/api/proxy?useExplorer=true&path=${encodeURIComponent(path)}`, {
-        method: 'GET'
+        method: 'GET',
+        headers
     });
     if (!response.ok) throw new Error(`Explorer API failed: ${response.status}`);
     return await response.json();
@@ -333,6 +357,20 @@ const getMainPurse = async (contractHash: string): Promise<string> => {
  * OPTIMIZATION: Only fetch activity newer than minTimestamp
  */
 export const fetchProtocolActivity = async (contractHash: string, minTimestamp: number = 0) => {
+    // Check Privacy Mode
+    if (typeof window !== 'undefined') {
+        try {
+            const savedSettings = localStorage.getItem('shroud_settings');
+            if (savedSettings) {
+                const settings = JSON.parse(savedSettings);
+                if (settings.privacyMode) {
+                    console.log("[Casper] Privacy Mode enabled. Skipping full historical activity fetch.");
+                    return { deposits: [], withdrawals: [], maxTimestamp: minTimestamp };
+                }
+            }
+        } catch (e) { }
+    }
+
     const commitments: string[] = [];
     const withdrawalsByHash = new Map<string, any>();
 
@@ -448,6 +486,19 @@ export const fetchProtocolActivity = async (contractHash: string, minTimestamp: 
  * Much faster than fetchProtocolActivity for displaying hero stats.
  */
 export const fetchQuickStats = async (contractHash: string): Promise<{ totalTransactions: number }> => {
+    // Check Privacy Mode
+    if (typeof window !== 'undefined') {
+        try {
+            const savedSettings = localStorage.getItem('shroud_settings');
+            if (savedSettings) {
+                const settings = JSON.parse(savedSettings);
+                if (settings.privacyMode) {
+                    return { totalTransactions: 0 };
+                }
+            }
+        } catch (e) { }
+    }
+
     try {
         const mainPurse = await getMainPurse(contractHash);
         let totalCount = 0;
@@ -806,10 +857,13 @@ export const createWithdrawTransaction = (
     proof: Uint8Array,
     root: bigint,
     nullifierHash: bigint,
-    recipient: string
+    recipient: string,
+    relayer: string,
+    fee: bigint
 ): Deploy => {
     const senderKey = PublicKey.fromHex(activeKey);
     const recipientKey = PublicKey.fromHex(recipient);
+    const relayerKey = PublicKey.fromHex(relayer);
 
     // Create List<U8> for proof
     const proofList = Array.from(proof).map(b => CLValue.newCLUint8(b));
@@ -819,6 +873,8 @@ export const createWithdrawTransaction = (
         root: CLValue.newCLUInt256(root.toString()),
         nullifier_hash: CLValue.newCLUInt256(nullifierHash.toString()),
         recipient: CLValue.newCLKey(Key.createByType(recipientKey.accountHash().toHex(), KeyTypeID.Account)),
+        relayer: CLValue.newCLKey(Key.createByType(relayerKey.accountHash().toHex(), KeyTypeID.Account)),
+        fee: CLValue.newCLUInt512(fee.toString()),
     });
 
     const deployParams = new DeployHeader();

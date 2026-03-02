@@ -6,6 +6,8 @@ export async function withdrawCommand(
     nodeUrl: string,
     contractHash: string,
     recipientAddress: string,
+    relayerAddress: string,
+    feeStr: string,
     secretsFile: string,
     circuitWasmPath: string,
     provingKeyPath: string,
@@ -69,7 +71,7 @@ export async function withdrawCommand(
     console.log(`   Leaf index: ${actualIndex}`);
     console.log(`   Root: ${root.toString(16).substring(0, 16)}...`);
 
-    // Deriving recipient numeric input for circuit (Account Hash)
+    // Deriving numeric inputs for circuit (Account Hash)
     let recipientNumeric: bigint;
     try {
         const { CLPublicKey } = require('casper-js-sdk');
@@ -81,6 +83,18 @@ export async function withdrawCommand(
         recipientNumeric = BigInt(recipientAddress.startsWith('0x') ? recipientAddress : '0x' + recipientAddress);
     }
 
+    let relayerNumeric: bigint;
+    try {
+        const { CLPublicKey } = require('casper-js-sdk');
+        const pubKey = CLPublicKey.fromHex(relayerAddress);
+        const hash = pubKey.accountHash();
+        relayerNumeric = BigInt('0x' + Buffer.from(hash).toString('hex'));
+    } catch (e) {
+        relayerNumeric = BigInt(relayerAddress.startsWith('0x') ? relayerAddress : '0x' + relayerAddress);
+    }
+
+    const feeNumeric = BigInt(feeStr);
+
     console.log('⚡ Generating Zero-Knowledge Proof...');
     const input = {
         nullifier: nullifier,
@@ -90,8 +104,8 @@ export async function withdrawCommand(
         root: root,
         nullifierHash: crypto.computeNullifierHash(nullifier),
         recipient: recipientNumeric,
-        relayer: 0n,
-        fee: 0n
+        relayer: relayerNumeric,
+        fee: feeNumeric
     };
 
     const { proof, publicSignals } = await snarkjs.groth16.fullProve(
@@ -110,6 +124,8 @@ export async function withdrawCommand(
         root,
         crypto.computeNullifierHash(nullifier),
         recipientAddress,
+        relayerAddress,
+        feeNumeric,
         senderKeyPath
     );
 

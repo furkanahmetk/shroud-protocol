@@ -17,7 +17,7 @@ pub enum Error {
 
 
 
-#[odra::module(events = [Deposit, Withdrawal])]
+#[odra::module]
 pub struct ShroudProtocol {
     pub merkle_tree: Var<MerkleTree>,
     pub commitments: Mapping<U256, bool>,
@@ -71,7 +71,14 @@ impl ShroudProtocol {
         root: U256,
         nullifier_hash: U256,
         recipient: Address,
+        relayer: Address,
+        fee: U512,
     ) {
+        // 0. Check fee
+        if fee >= U512::from(DENOMINATION) {
+            self.env().revert(Error::InvalidAmount);
+        }
+
         // 1. Check nullifier
         if self.spent_nullifiers.get(&nullifier_hash).unwrap_or(false) {
             self.env().revert(Error::AlreadySpent);
@@ -84,7 +91,7 @@ impl ShroudProtocol {
         }
 
         // 3. Verify Proof
-        if !Verifier::verify(&proof, root, nullifier_hash, recipient) {
+        if !Verifier::verify(&proof, root, nullifier_hash, recipient, relayer, fee) {
             self.env().revert(Error::InvalidProof);
         }
 
@@ -92,12 +99,19 @@ impl ShroudProtocol {
         self.spent_nullifiers.set(&nullifier_hash, true);
 
         // 5. Transfer funds
-        self.env().transfer_tokens(&recipient, &U512::from(DENOMINATION));
+        let amount_to_recipient = U512::from(DENOMINATION) - fee;
+        self.env().transfer_tokens(&recipient, &amount_to_recipient);
+        
+        if fee > U512::zero() {
+            self.env().transfer_tokens(&relayer, &fee);
+        }
 
         // 6. Emit event
         self.env().emit_event(Withdrawal {
             nullifier_hash,
             recipient,
+            relayer,
+            fee,
         });
     }
 }
@@ -112,4 +126,6 @@ pub struct Deposit {
 pub struct Withdrawal {
     pub nullifier_hash: U256,
     pub recipient: Address,
+    pub relayer: Address,
+    pub fee: U512,
 }

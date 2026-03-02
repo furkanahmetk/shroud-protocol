@@ -4,7 +4,8 @@ import Image from 'next/image';
 import Link from 'next/link';
 import Deposit from '@/components/Deposit';
 import Withdraw from '@/components/Withdraw';
-import { Shield, Wallet, ArrowRight, Lock, EyeOff, Code2, Activity, Users, Globe, ExternalLink, Menu, X, ChevronRight } from 'lucide-react';
+import SettingsModal from '@/components/SettingsModal';
+import { Settings, Shield, Wallet, ArrowRight, Lock, EyeOff, Code2, Activity, Users, Globe, ExternalLink, Menu, X, ChevronRight } from 'lucide-react';
 import { useWallet } from '@/hooks/useWallet';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -15,6 +16,7 @@ import { useEffect } from 'react';
 
 export default function Home() {
     const [activeTab, setActiveTab] = useState<'deposit' | 'withdraw'>('deposit');
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [stats, setStats] = useState({ deposits: 0, withdrawals: 0 });
     const { isConnected, activeKey } = useWallet();
 
@@ -106,7 +108,7 @@ export default function Home() {
                             <div className="relative z-10 w-full h-full">
                                 <div className="relative w-full h-full animate-float">
                                     <Image
-                                        src="/hero_shield_3d_1764582011240.png"
+                                        src="/logo.png"
                                         alt="Privacy Shield"
                                         fill
                                         className="object-contain drop-shadow-[0_0_50px_rgba(59,130,246,0.5)]"
@@ -120,45 +122,61 @@ export default function Home() {
 
                 {/* App Interface */}
                 <div id="app-interface" className="container mx-auto px-4 max-w-lg relative z-10">
-                    <div className="glass-card rounded-3xl p-2 mb-24 border border-white/10 shadow-2xl shadow-brand-900/20">
-                        <div className="flex mb-2 bg-black/20 rounded-2xl p-1.5">
-                            <button
-                                onClick={() => setActiveTab('deposit')}
-                                className={`flex-1 py-3 rounded-xl font-semibold text-sm transition-all duration-200 ${activeTab === 'deposit'
-                                    ? 'bg-white/10 text-white shadow-lg shadow-white/5'
-                                    : 'text-gray-400 hover:text-white hover:bg-white/5'
-                                    }`}
-                            >
-                                Deposit
-                            </button>
-                            <button
-                                onClick={() => setActiveTab('withdraw')}
-                                className={`flex-1 py-3 rounded-xl font-semibold text-sm transition-all duration-200 ${activeTab === 'withdraw'
-                                    ? 'bg-white/10 text-white shadow-lg shadow-white/5'
-                                    : 'text-gray-400 hover:text-white hover:bg-white/5'
-                                    }`}
-                            >
-                                Withdraw
-                            </button>
-                        </div>
+                    <div className="glass-card rounded-[2.5rem] p-4 mb-24 border border-white/5 shadow-[0_0_80px_rgba(59,130,246,0.15)] bg-[#070B14]/80 backdrop-blur-3xl relative overflow-hidden">
+                        {/* Glow effect inside card */}
+                        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[120%] h-40 bg-brand-500/10 opacity-60 blur-[100px] pointer-events-none" />
 
-                        <AnimatePresence mode="wait">
-                            <motion.div
-                                key={activeTab}
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: -10 }}
-                                transition={{ duration: 0.2 }}
-                            >
-                                {activeTab === 'deposit' ? (
-                                    <Deposit isConnected={isConnected} activeKey={activeKey} />
-                                ) : (
-                                    <Withdraw isConnected={isConnected} activeKey={activeKey} />
-                                )}
-                            </motion.div>
-                        </AnimatePresence>
+                        <div className="relative z-10">
+                            <div className="flex items-center justify-between mb-6 bg-black/40 rounded-[1.5rem] p-1.5 border border-white/5 shadow-inner">
+                                <div className="flex flex-1">
+                                    <button
+                                        onClick={() => setActiveTab('deposit')}
+                                        className={`flex-1 py-3.5 rounded-2xl font-semibold text-sm transition-all duration-300 ${activeTab === 'deposit'
+                                            ? 'bg-[#1E293B]/80 text-white shadow-[0_4px_20px_rgba(0,0,0,0.5)] border border-white/10'
+                                            : 'text-gray-400 hover:text-white hover:bg-white/5'
+                                            }`}
+                                    >
+                                        Deposit
+                                    </button>
+                                    <button
+                                        onClick={() => setActiveTab('withdraw')}
+                                        className={`flex-1 py-3.5 rounded-2xl font-semibold text-sm transition-all duration-300 ${activeTab === 'withdraw'
+                                            ? 'bg-[#1E293B]/80 text-white shadow-[0_4px_20px_rgba(0,0,0,0.5)] border border-white/10'
+                                            : 'text-gray-400 hover:text-white hover:bg-white/5'
+                                            }`}
+                                    >
+                                        Withdraw
+                                    </button>
+                                </div>
+                                <button
+                                    onClick={() => setIsSettingsOpen(true)}
+                                    className="ml-2 p-3.5 rounded-2xl text-gray-400 hover:text-white hover:bg-white/5 transition-all duration-300 border border-transparent hover:border-white/10 active:scale-95"
+                                    title="Protocol Settings"
+                                >
+                                    <Settings className="w-5 h-5" />
+                                </button>
+                            </div>
+
+                            <AnimatePresence mode="wait">
+                                <motion.div
+                                    key={activeTab}
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -10 }}
+                                    transition={{ duration: 0.2 }}
+                                >
+                                    {activeTab === 'deposit' ? (
+                                        <Deposit isConnected={isConnected} activeKey={activeKey} />
+                                    ) : (
+                                        <Withdraw isConnected={isConnected} activeKey={activeKey} />
+                                    )}
+                                </motion.div>
+                            </AnimatePresence>
+                        </div>
                     </div>
                 </div>
+
+                <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
 
                 {/* Features Section */}
                 <div id="how-it-works" className="container mx-auto px-6 mb-24 relative z-10">
