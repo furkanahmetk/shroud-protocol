@@ -43,13 +43,9 @@ test = false
 lto = false
 codegen-units = 1
 
-[dev-dependencies]
-odra = "2.5.0"
-odra-test = "2.5.0"
-
 [[bin]]
 name = "deposit_session"
-path = "bin/deposit_session.rs"
+path = "src/deposit_session.rs"
 test = false
 
 [dependencies.casper-contract]

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowDownCircle, Copy, Check, X, ShieldAlert, TerminalSquare } from 'lucide-react';
+import { ArrowDownCircle, Copy, Check, X } from 'lucide-react';
 import { CryptoUtils } from '../utils/crypto';
 import { createDepositSessionTransaction, createDepositSessionTransaction as _deprecated, sendSignedTransaction, CONTRACT_HASH } from '../utils/casper';
 import { useWallet } from '../hooks/useWallet';
@@ -112,36 +112,26 @@ export default function Deposit({ isConnected, activeKey }: DepositProps) {
     };
 
     return (
-        <div className="space-y-4">
-            <div className="bg-[#0A101D] border border-blue-500/20 p-4 rounded-2xl flex items-center gap-4 shadow-sm">
-                <div className="p-2 bg-blue-500/10 rounded-xl">
-                    <ShieldAlert className="w-5 h-5 text-blue-400" />
-                </div>
-                <p className="text-[13px] text-blue-200/80 leading-relaxed">
-                    <strong className="text-blue-400 font-semibold mr-1">Privacy Notice:</strong>
-                    For maximum security, avoid using IP addresses linked to your real identity. Consider VPNs.
+        <div className="space-y-6">
+            <div className="bg-blue-500/10 border border-blue-500/20 p-3 rounded-xl flex items-center gap-3">
+                <span className="text-lg">🧹</span>
+                <p className="text-xs text-blue-300/90">
+                    <span className="font-medium">Tip:</span> If something seems off, try clearing your browser cache or using incognito mode!
                 </p>
             </div>
-            <div className="bg-[#050912]/80 p-5 rounded-3xl border border-white/5 ring-1 ring-transparent hover:ring-brand-500/20 transition-all shadow-inner group">
-                <div className="flex justify-between mb-3 px-1">
-                    <span className="text-gray-500 text-xs font-semibold tracking-wider uppercase">Amount to Deposit</span>
-                    <span className="text-brand-400 font-mono text-xs font-medium bg-brand-500/10 px-2 py-0.5 rounded-md">
-                        {isConnected ? (balance ? `${balance} CSPR` : 'Loading...') : 'Connect Wallet'}
-                    </span>
+            <div className="bg-white/5 p-6 rounded-2xl border border-white/10">
+                <div className="flex justify-between mb-2">
+                    <span className="text-gray-400 text-sm font-medium">Amount to Deposit</span>
+                    <span className="text-brand-400 font-mono text-sm font-medium">Balance: {isConnected ? (balance ? `${balance} CSPR` : 'Loading...') : 'Connect Wallet'}</span>
                 </div>
-                <div className="flex items-center space-x-3 bg-black/40 rounded-2xl p-4 border border-white/5 transition-colors group-hover:border-white/10">
+                <div className="flex items-center space-x-3">
                     <input
                         type="text"
                         value={amount}
                         readOnly
-                        className="bg-transparent text-5xl font-extrabold w-full focus:outline-none text-white font-mono tracking-tight"
+                        className="bg-transparent text-4xl font-bold w-full focus:outline-none text-white font-mono tracking-tight"
                     />
-                    <div className="flex items-center bg-[#1E293B] px-4 py-2 rounded-xl border border-white/10 shadow-sm">
-                        <div className="w-6 h-6 bg-brand-500 rounded-full mr-2 flex items-center justify-center border border-brand-400 shadow-[0_0_10px_rgba(59,130,246,0.5)]">
-                            <span className="text-white text-[10px] font-bold">C</span>
-                        </div>
-                        <span className="text-lg font-bold text-white tracking-tight">CSPR</span>
-                    </div>
+                    <span className="text-xl font-bold text-brand-400 bg-brand-500/10 px-3 py-1 rounded-lg border border-brand-500/20">CSPR</span>
                 </div>
             </div>
 
@@ -260,31 +250,19 @@ export default function Deposit({ isConnected, activeKey }: DepositProps) {
                 </>
             )}
 
-            <div className="flex justify-between items-center px-4 py-1">
-                <span className="text-xs text-gray-500 font-medium">Network Fee</span>
-                <span className="text-xs text-brand-400 font-medium bg-brand-500/10 px-2 py-0.5 rounded-md">+ 1.5 CSPR</span>
+            <div className="text-xs text-center text-gray-500 font-medium">
+                + 1.5 CSPR network fee
             </div>
 
             {/* CLI Tool Guidance */}
-            <div className="mt-6 p-5 bg-[#0A101D] border border-blue-500/20 rounded-2xl relative overflow-hidden group">
-                {/* Decorative background glow */}
-                <div className="absolute -top-10 -right-10 w-32 h-32 bg-blue-500/10 rounded-full blur-[40px] pointer-events-none group-hover:bg-blue-500/20 transition-colors duration-500" />
-
-                <div className="flex items-center gap-3 mb-3 relative z-10">
-                    <div className="p-2 bg-blue-500/10 rounded-lg">
-                        <TerminalSquare className="w-4 h-4 text-blue-400" />
-                    </div>
-                    <div className="text-sm border-b border-transparent group-hover:border-blue-500/30 text-blue-300 font-bold tracking-tight uppercase transition-all">CLI Tool Available</div>
-                </div>
-                <p className="text-[13px] text-blue-200/60 leading-relaxed relative z-10 mb-4 pr-4">
-                    For enhanced protection and air-gapped secret generation, use the local CLI tool to interact with the Shroud Protocol directly.
+            <div className="mt-4 p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl">
+                <div className="text-sm text-blue-300 font-medium mb-2">💡 CLI Tool Available</div>
+                <p className="text-xs text-blue-200/70 leading-relaxed">
+                    For enhanced security and reliability, use the CLI tool:
                 </p>
-                <div className="relative group/code block">
-                    <div className="absolute inset-0 bg-blue-500/20 blur opacity-0 group-hover/code:opacity-100 transition duration-300 rounded-xl"></div>
-                    <code className="relative block p-4 bg-[#050811] rounded-xl text-[11px] font-mono text-blue-300/80 break-all border border-blue-500/10 leading-relaxed">
-                        <span className="text-brand-400">cd</span> cli {'&&'} <span className="text-brand-400">npm start</span> -- deposit --node https://node.testnet.casper.network --contract <span className="text-white">CONTRACT_HASH</span> --amount 100
-                    </code>
-                </div>
+                <code className="block mt-2 p-2 bg-black/30 rounded text-xs font-mono text-blue-300 break-all">
+                    cd cli && npm start -- deposit --node https://node.testnet.casper.network --contract CONTRACT_HASH --amount 100
+                </code>
             </div>
         </div>
     );

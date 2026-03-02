@@ -33,35 +33,9 @@ program.command('withdraw')
     .requiredOption('-k, --key <path>', 'Path to sender secret key (for gas)')
     .requiredOption('-w, --wasm <path>', 'Path to circuit WASM')
     .requiredOption('-z, --zkey <path>', 'Path to proving key')
-    .option('-R, --relayer <key>', 'Relayer public key (hex)', '01' + '00'.repeat(32)) // Default dummy key
-    .option('-f, --fee <amount>', 'Relayer fee in motes', '0')
     .action(async (options) => {
         try {
-            await withdrawCommand(
-                options.node,
-                options.contract,
-                options.recipient,
-                options.relayer,
-                options.fee,
-                options.secrets,
-                options.wasm,
-                options.zkey,
-                options.key
-            );
-        } catch (e) {
-            console.error(e);
-        }
-    });
-
-program.command('export-viewing-key')
-    .description('Export the secret and nullifier into a JSON format used for compliance and verification')
-    .requiredOption('-s, --secrets <path>', 'Path to the existing secrets.json file')
-    .option('-o, --output <path>', 'Path to save the new Compliance Viewing Key JSON')
-    .action(async (options) => {
-        try {
-            // Lazy load to prevent unnecessary heavy crypto loads in unrelated CLI commands
-            const { exportViewingKeyCommand } = await import('./compliance');
-            await exportViewingKeyCommand(options.secrets, options.output);
+            await withdrawCommand(options.node, options.contract, options.recipient, options.secrets, options.wasm, options.zkey, options.key);
         } catch (e) {
             console.error(e);
         }

@@ -12,13 +12,7 @@ export default async function handler(
     res: NextApiResponse
 ) {
     const { useExplorer, path } = req.query;
-    const customRpcUrl = req.headers['x-custom-rpc-url'] as string | undefined;
-    const customExplorerUrl = req.headers['x-custom-explorer-url'] as string | undefined;
-
-    const activeRpcUrl = customRpcUrl || NODE_URL;
-    const activeExplorerUrl = customExplorerUrl || EXPLORER_API_URL;
-
-    let targetUrl = useExplorer ? `${activeExplorerUrl}${path || ''}` : activeRpcUrl;
+    let targetUrl = useExplorer ? `${EXPLORER_API_URL}${path || ''}` : NODE_URL;
 
     try {
         const fetchOptions: any = {

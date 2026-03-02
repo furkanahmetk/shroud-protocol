@@ -85,8 +85,6 @@ export class BlockchainClient {
         root: bigint,
         nullifierHash: bigint,
         recipient: string,
-        relayer: string,
-        fee: bigint,
         senderKeyPath: string
     ): Promise<string> {
         let keyPair;
@@ -96,15 +94,12 @@ export class BlockchainClient {
             keyPair = Keys.Secp256K1.loadKeyPairFromPrivateFile(senderKeyPath);
         }
         const recipientKey = CLPublicKey.fromHex(recipient);
-        const relayerKey = CLPublicKey.fromHex(relayer);
 
         const args = RuntimeArgs.fromMap({
             proof: CLValueBuilder.list(Array.from(proof).map(b => CLValueBuilder.u8(b))),
             root: CLValueBuilder.u256(root.toString()),
             nullifier_hash: CLValueBuilder.u256(nullifierHash.toString()),
             recipient: CLValueBuilder.key(recipientKey),
-            relayer: CLValueBuilder.key(relayerKey),
-            fee: CLValueBuilder.u512(fee.toString()),
         });
 
         const deploy = DeployUtil.makeDeploy(

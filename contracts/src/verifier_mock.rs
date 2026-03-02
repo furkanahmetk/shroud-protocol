@@ -17,8 +17,6 @@ impl Verifier {
         _root: U256,
         _nullifier_hash: U256,
         _recipient: Address,
-        _relayer: Address,
-        _fee: casper_types::U512,
     ) -> bool {
         // MOCK: Accept all proofs for testing
         true

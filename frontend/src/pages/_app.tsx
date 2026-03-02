@@ -3,7 +3,6 @@ import type { AppProps } from 'next/app'
 import { Inter } from 'next/font/google'
 import Head from 'next/head'
 import { CommitmentProvider } from '../context/CommitmentContext'
-import { SettingsProvider } from '../contexts/SettingsContext'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 
@@ -17,11 +16,9 @@ export default function App({ Component, pageProps }: AppProps) {
                 <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
             </Head>
             <main className={`${inter.variable} font-sans`}>
-                <SettingsProvider>
-                    <CommitmentProvider>
-                        <Component {...pageProps} />
-                    </CommitmentProvider>
-                </SettingsProvider>
+                <CommitmentProvider>
+                    <Component {...pageProps} />
+                </CommitmentProvider>
             </main>
         </>
     )

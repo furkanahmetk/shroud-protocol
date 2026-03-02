@@ -22,8 +22,6 @@ const formatETA = (ms: number | null): string => {
 export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
     const [secretInput, setSecretInput] = useState('');
     const [recipient, setRecipient] = useState('');
-    const [relayer, setRelayer] = useState('');
-    const [fee, setFee] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
     const [status, setStatus] = useState<'idle' | 'proving' | 'withdrawing' | 'success'>('idle');
     const [txHash, setTxHash] = useState<string | null>(null);
@@ -151,27 +149,6 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
                 throw new Error(`Invalid recipient public key: ${err.message}. Please enter a valid Casper Public Key.`);
             }
 
-            let relayerBigInt = 0n;
-            let finalRelayerAddress = relayer || activeKey || recipient; // Default to activeKey if no relayer provided
-
-            try {
-                if (finalRelayerAddress) {
-                    const { getAccountHash } = await import('../utils/casper');
-                    const accountHashHex = getAccountHash(finalRelayerAddress);
-                    relayerBigInt = BigInt('0x' + accountHashHex);
-                }
-            } catch (err: any) {
-                console.error('[Withdraw] Failed to parse relayer public key:', finalRelayerAddress);
-                throw new Error(`Invalid relayer public key: ${err.message}.`);
-            }
-
-            let feeBigInt = 0n;
-            try {
-                if (fee) feeBigInt = BigInt(fee);
-            } catch (err) {
-                throw new Error('Invalid fee amount.');
-            }
-
             const input = {
                 nullifier: nullifier,
                 secret: secret,
@@ -180,8 +157,8 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
                 root: computedRoot,
                 nullifierHash: crypto.computeNullifierHash(nullifier),
                 recipient: recipientBigInt,
-                relayer: relayerBigInt,
-                fee: feeBigInt
+                relayer: 0n,
+                fee: 0n
             };
 
             // Generate ZK proof
@@ -202,9 +179,7 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
                 proofBytes,
                 computedRoot,
                 BigInt(publicSignals[1]), // nullifier_hash from signals
-                recipient,
-                finalRelayerAddress,
-                feeBigInt
+                recipient
             );
 
             // 9. Sign & Send
@@ -254,8 +229,6 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
                         setStatus('idle');
                         setSecretInput('');
                         setRecipient('');
-                        setRelayer('');
-                        setFee('');
                         setTxHash(null);
                     }}
                     className="mt-6 px-8 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-medium transition-all text-gray-300 hover:text-white shadow-sm hover:shadow-md"
@@ -269,52 +242,23 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
     return (
         <div className="space-y-6">
             <div className="space-y-3">
-                <label className="text-xs text-gray-500 font-bold uppercase tracking-wider ml-1">Secret Key (JSON)</label>
-                <div className="relative group">
-                    <div className="absolute inset-0 bg-brand-500/0 group-hover:bg-brand-500/5 transition-colors duration-300 rounded-2xl pointer-events-none"></div>
-                    <textarea
-                        value={secretInput}
-                        onChange={(e) => setSecretInput(e.target.value)}
-                        placeholder='Paste your secret JSON here...'
-                        className="w-full bg-[#050912]/80 border border-white/5 hover:border-white/10 rounded-2xl p-4 text-white focus:outline-none focus:ring-1 focus:ring-brand-500/50 h-32 resize-none font-mono text-[11px] leading-relaxed transition-all placeholder:text-gray-700 shadow-inner"
-                    />
-                </div>
+                <label className="text-sm text-gray-400 font-medium ml-1">Secret Key (JSON)</label>
+                <textarea
+                    value={secretInput}
+                    onChange={(e) => setSecretInput(e.target.value)}
+                    placeholder='Paste your secret JSON here...'
+                    className="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-white focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500 h-32 resize-none font-mono text-xs transition-all placeholder:text-gray-600"
+                />
             </div>
 
             <div className="space-y-3">
-                <label className="text-xs text-gray-500 font-bold uppercase tracking-wider ml-1">Recipient Address</label>
+                <label className="text-sm text-gray-400 font-medium ml-1">Recipient Address</label>
                 <input
                     type="text"
                     value={recipient}
                     onChange={(e) => setRecipient(e.target.value)}
                     placeholder="0x..."
-                    className="w-full bg-[#050912]/80 border border-white/5 hover:border-white/10 rounded-2xl p-4 text-white focus:outline-none focus:ring-1 focus:ring-brand-500/50 font-mono text-xs transition-all placeholder:text-gray-700 shadow-inner"
-                />
-            </div>
-
-            <div className="space-y-3">
-                <label className="text-xs text-gray-500 font-bold uppercase tracking-wider ml-1 flex items-center justify-between">
-                    <span>Relayer Address <span className="text-gray-600 normal-case font-normal">(Optional)</span></span>
-                </label>
-                <input
-                    type="text"
-                    value={relayer}
-                    onChange={(e) => setRelayer(e.target.value)}
-                    placeholder="Public Key to execute on your behalf..."
-                    className="w-full bg-[#050912]/80 border border-white/5 hover:border-white/10 rounded-2xl p-4 text-white focus:outline-none focus:ring-1 focus:ring-brand-500/50 font-mono text-xs transition-all placeholder:text-gray-700 shadow-inner"
-                />
-            </div>
-
-            <div className="space-y-3">
-                <label className="text-xs text-gray-500 font-bold uppercase tracking-wider ml-1 flex items-center justify-between">
-                    <span>Relayer Fee <span className="text-gray-600 normal-case font-normal">(Op, Motes)</span></span>
-                </label>
-                <input
-                    type="text"
-                    value={fee}
-                    onChange={(e) => setFee(e.target.value)}
-                    placeholder="e.g. 100000000 (0.1 CSPR)"
-                    className="w-full bg-[#050912]/80 border border-white/5 hover:border-white/10 rounded-2xl p-4 text-white focus:outline-none focus:ring-1 focus:ring-brand-500/50 font-mono text-xs transition-all placeholder:text-gray-700 shadow-inner"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-white focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500 font-mono text-sm transition-all placeholder:text-gray-600"
                 />
             </div>
 
@@ -341,13 +285,10 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
             </button>
 
             {/* On-Chain Sync Status */}
-            <div className="mt-6 p-5 bg-[#0A101D] border border-brand-500/10 hover:border-brand-500/20 rounded-2xl space-y-4 transition-colors">
+            <div className="mt-4 p-4 bg-brand-500/10 border border-brand-500/20 rounded-xl space-y-3">
                 <div className="flex justify-between items-center">
-                    <div className="text-xs text-brand-400/80 font-bold uppercase tracking-wider flex items-center">
-                        <div className="w-1.5 h-1.5 rounded-full bg-brand-500 mr-2 shadow-[0_0_8px_rgba(59,130,246,0.8)]"></div>
-                        On-Chain State Sync
-                    </div>
-                    <div className="text-[10px] bg-brand-500/10 px-2 py-0.5 rounded-md text-brand-300 font-mono tracking-tight">
+                    <div className="text-sm text-brand-300 font-medium">🔄 On-Chain Sync</div>
+                    <div className="text-xs text-brand-200/70 font-mono">
                         {commitments.length} commitments
                     </div>
                 </div>
@@ -406,22 +347,22 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
                 <button
                     onClick={handleSync}
                     disabled={isProcessing || isSyncing}
-                    className="w-full py-3 bg-brand-500/10 hover:bg-brand-500/20 border border-brand-500/20 rounded-xl text-xs font-semibold text-brand-300 transition-all flex items-center justify-center disabled:opacity-50 tracking-wide"
+                    className="w-full py-2 bg-brand-500/20 hover:bg-brand-500/30 border border-brand-500/30 rounded-xl text-xs font-medium text-brand-300 transition-all flex items-center justify-center disabled:opacity-50"
                 >
                     {isProcessing || isSyncing ? (
                         <>
-                            <div className="w-3.5 h-3.5 border-2 border-brand-300/30 border-t-brand-300 rounded-full animate-spin mr-2"></div>
+                            <div className="w-3 h-3 border-2 border-brand-300/30 border-t-brand-300 rounded-full animate-spin mr-1"></div>
                             {syncProgress && syncProgress.total > 0
-                                ? `Syncing ${syncProgress.current}/${syncProgress.total}...`
-                                : 'Syncing state...'}
+                                ? `${syncProgress.current}/${syncProgress.total}`
+                                : 'Syncing...'}
                         </>
                     ) : (
-                        "Force Re-sync from Explorer"
+                        "🔄 Force Re-sync from Explorer"
                     )}
                 </button>
 
-                <p className="text-[9px] text-gray-600 font-medium uppercase tracking-widest text-center px-2">
-                    Synced automatically from blockchain.
+                <p className="text-[10px] text-gray-500 leading-relaxed text-center px-2">
+                    Synced automatically from the Casper blockchain.
                 </p>
             </div>
         </div >
