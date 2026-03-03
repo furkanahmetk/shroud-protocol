@@ -251,18 +251,7 @@ export default function Deposit({ isConnected, activeKey }: DepositProps) {
             )}
 
             <div className="text-xs text-center text-gray-500 font-medium">
-                + 1.5 CSPR network fee
-            </div>
-
-            {/* CLI Tool Guidance */}
-            <div className="mt-4 p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl">
-                <div className="text-sm text-blue-300 font-medium mb-2">💡 CLI Tool Available</div>
-                <p className="text-xs text-blue-200/70 leading-relaxed">
-                    For enhanced security and reliability, use the CLI tool:
-                </p>
-                <code className="block mt-2 p-2 bg-black/30 rounded text-xs font-mono text-blue-300 break-all">
-                    cd cli && npm start -- deposit --node https://node.testnet.casper.network --contract CONTRACT_HASH --amount 100
-                </code>
+                +Network fee
             </div>
         </div>
     );

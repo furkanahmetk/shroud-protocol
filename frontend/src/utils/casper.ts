@@ -444,29 +444,125 @@ export const fetchProtocolActivity = async (contractHash: string, minTimestamp: 
 };
 
 /**
+ * Fetch strictly the most recent limited activity (deposits and withdrawals) as a single unified list.
+ * OPTIMIZATION: Only fetches the first page to save bandwidth for the statistics page.
+ * STREAMING: Calls onTransactionFound as soon as a transaction is parsed.
+ */
+export const fetchRecentActivity = async (
+    contractHash: string,
+    limit: number = 40,
+    onTransactionFound?: (tx: any) => void
+) => {
+    const unifiedActivity: any[] = [];
+
+    try {
+        const mainPurse = await getMainPurse(contractHash);
+
+        // ONLY fetch the first page 
+        const response = await explorerCall(`/purses/${mainPurse}/transfers?page_size=${limit * 2}&page=1`);
+        const data = response.data || [];
+
+        const uniqueHashes = Array.from(new Set(data.map((t: any) => t.deploy_hash))) as string[];
+
+        // Only process up to what we strictly need
+        for (const hash of uniqueHashes.slice(0, limit * 2)) {
+            try {
+                const deploy = await explorerCall(`/deploys/${hash}`);
+                const deployData = deploy.data;
+                const success = deployData?.status === 'processed' && !deployData?.error_message;
+                if (!success) continue;
+
+                const args = deployData?.args || deployData?.session?.args || deployData?.session?.StoredContractByHash?.args;
+
+                if (args) {
+                    const commitmentValue = args.commitment?.parsed ||
+                        (Array.isArray(args) ? args.find((a: any) => a.name === 'commitment' || a[0] === 'commitment')?.parsed : null);
+
+                    if (commitmentValue && unifiedActivity.length < limit) {
+                        const newTx = {
+                            type: 'deposit',
+                            hash: hash,
+                            timestamp: deployData.timestamp,
+                            commitment: commitmentValue.toString()
+                        };
+                        unifiedActivity.push(newTx);
+                        if (onTransactionFound) onTransactionFound(newTx);
+                        continue;
+                    }
+
+                    const nullifierValue = args.nullifier_hash?.parsed ||
+                        (Array.isArray(args) ? args.find((a: any) => a.name === 'nullifier_hash' || a[0] === 'nullifier_hash')?.parsed : null);
+
+                    if ((nullifierValue || deployData?.entry_point === 'withdraw' || deployData?.session?.StoredVersionedContractByHash?.entry_point === 'withdraw') && unifiedActivity.length < limit) {
+                        const newTx = {
+                            type: 'withdrawal',
+                            hash: hash,
+                            timestamp: deployData.timestamp,
+                            nullifier: nullifierValue?.toString() || 'unknown',
+                            recipient: args.recipient?.parsed || 'unknown'
+                        };
+                        unifiedActivity.push(newTx);
+                        if (onTransactionFound) onTransactionFound(newTx);
+                    }
+                }
+            } catch (e) {
+                console.warn(`[Casper] Failed to fetch recent activity for deploy ${hash}:`, e);
+            }
+        }
+    } catch (e: any) {
+        console.warn('[Casper] Explorer recent activity sync failed:', e.message);
+    }
+
+    // Sort the unified list chronologically (newest first)
+    return unifiedActivity.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, limit);
+};
+
+/**
  * Quick stats function - just counts total transfers without fetching deploy details.
  * Much faster than fetchProtocolActivity for displaying hero stats.
  */
-export const fetchQuickStats = async (contractHash: string): Promise<{ totalTransactions: number }> => {
+export const fetchQuickStats = async (contractHash: string): Promise<{ totalTransactions: number, deposits: number, withdrawals: number }> => {
     try {
         const mainPurse = await getMainPurse(contractHash);
         let totalCount = 0;
+        let depositCount = 0;
+        let withdrawalCount = 0;
         let page = 1;
         let hasMore = true;
 
+        // Since we are checking args now to split the counts, we might need a small tradeoff on speed, 
+        // but since they just want a fast count, we can do a rough estimate if transfer amount == deposit amount.
+        // Actually, let's just use the raw transfer count for now and split it roughly by sender vs recipient,
+        // or we simply fetch the deploys for a true accurate split if they only have ~200 txs.
+        // To maintain the `fetchQuickStats` instantaneous speed, we will accurately count transfers 
+        // by looking at the from_purse and to_purse on the transfer object itself.
         while (hasMore && page <= 10) {
             const response = await explorerCall(`/purses/${mainPurse}/transfers?page_size=100&page=${page}`);
             const data = response.data || [];
+
+            for (const t of data) {
+                // If the main purse is the to_purse, it received funds -> Deposit
+                if (t.to_purse === mainPurse) {
+                    depositCount++;
+                }
+                // If the main purse is the from_purse, it sent funds -> Withdrawal
+                else if (t.from_purse === mainPurse) {
+                    withdrawalCount++;
+                }
+            }
             totalCount += data.length;
             hasMore = data.length === 100;
             page++;
         }
 
-        // Get unique deploy hashes (each tx is a deposit or withdrawal)
-        return { totalTransactions: totalCount };
+        return {
+            totalTransactions: totalCount,
+            deposits: depositCount,
+            withdrawals: withdrawalCount
+        };
     } catch (e) {
         console.warn('[Casper] Quick stats failed:', e);
-        return { totalTransactions: 0 };
+        return { totalTransactions: 0, deposits: 0, withdrawals: 0 };
     }
 };
 

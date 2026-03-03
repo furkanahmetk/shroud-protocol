@@ -69,7 +69,9 @@ export default function Navbar() {
                     {[
                         { name: 'Home', path: '/' },
                         { name: 'Statistics', path: '/statistics' },
-                        { name: 'Docs', path: '/docs' }
+                        { name: 'Docs', path: '/docs' },
+                        { name: 'Whitepaper', path: '/whitepaper' },
+                        { name: 'Roadmap', path: '/roadmap' }
                     ].map((item) => (
                         <Link
                             key={item.name}
@@ -165,7 +167,9 @@ export default function Navbar() {
                         {[
                             { name: 'Home', path: '/' },
                             { name: 'Statistics', path: '/statistics' },
-                            { name: 'Docs', path: '/docs' }
+                            { name: 'Docs', path: '/docs' },
+                            { name: 'Whitepaper', path: '/whitepaper' },
+                            { name: 'Roadmap', path: '/roadmap' }
                         ].map((item) => (
                             <Link
                                 key={item.name}

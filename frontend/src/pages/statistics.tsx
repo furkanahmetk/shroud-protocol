@@ -6,23 +6,46 @@ import { Activity, Users, DollarSign, Clock, Shield, Lock, ExternalLink, CheckCi
 import { getContractHash, CONTRACT_HASH } from '@/utils/casper';
 
 export default function Statistics() {
-    const [activity, setActivity] = useState<{ deposits: string[], withdrawals: any[] }>({ deposits: [], withdrawals: [] });
+    const [activity, setActivity] = useState<any[]>([]);
+    const [totals, setTotals] = useState({ deposits: 0, withdrawals: 0 });
     const [isLoading, setIsLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'deposits' | 'withdrawals'>('deposits');
 
     useEffect(() => {
+        let isMounted = true;
         const loadActivity = async () => {
             try {
-                const { fetchProtocolActivity } = await import('@/utils/casper');
-                const data = await fetchProtocolActivity(CONTRACT_HASH);
-                setActivity(data);
+                const { fetchRecentActivity, fetchQuickStats } = await import('@/utils/casper');
+
+                // Fetch the fast total counts
+                const fastStats = await fetchQuickStats(CONTRACT_HASH);
+                if (isMounted) {
+                    setTotals({ deposits: fastStats.deposits, withdrawals: fastStats.withdrawals });
+                }
+
+                // Fetch the detailed recent 40 items with streaming
+                await fetchRecentActivity(CONTRACT_HASH, 40, (newTx) => {
+                    if (isMounted) {
+                        setActivity(prev => {
+                            // Append and sort
+                            const next = [...prev, newTx];
+                            return next.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+                        });
+                        setIsLoading(false); // remove loading spinner as soon as first tx arrives
+                    }
+                });
             } catch (e) {
                 console.error("Failed to fetch statistics:", e);
             } finally {
-                setIsLoading(false);
+                if (isMounted && activity.length === 0) {
+                    setIsLoading(false);
+                }
             }
         };
         loadActivity();
+
+        return () => {
+            isMounted = false;
+        };
     }, []);
 
     // Contract information
@@ -36,8 +59,8 @@ export default function Statistics() {
     };
 
     const features = [
-        { label: 'Total Deposits', value: activity.deposits.length.toString(), icon: Database, color: 'text-brand-400', bg: 'bg-brand-500/10' },
-        { label: 'Total Withdrawals', value: activity.withdrawals.length.toString(), icon: ExternalLink, color: 'text-brand-400', bg: 'bg-brand-500/10' },
+        { label: 'Total Deposits', value: totals.deposits.toString(), icon: Database, color: 'text-brand-400', bg: 'bg-brand-500/10' },
+        { label: 'Total Withdrawals', value: totals.withdrawals.toString(), icon: ExternalLink, color: 'text-brand-400', bg: 'bg-brand-500/10' },
         { label: 'Network', value: 'Testnet', icon: Shield, color: 'text-green-400', bg: 'bg-green-500/10' },
         { label: 'Contract Status', value: 'Active', icon: CheckCircle, color: 'text-green-400', bg: 'bg-green-500/10' },
     ];
@@ -85,20 +108,13 @@ export default function Statistics() {
                                     <h2 className="text-xl font-bold text-white flex items-center">
                                         <Activity className="w-5 h-5 mr-2 text-brand-400" /> Recent Activity
                                     </h2>
-                                    <div className="flex bg-white/5 p-1 rounded-xl border border-white/10">
-                                        <button
-                                            onClick={() => setActiveTab('deposits')}
-                                            className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${activeTab === 'deposits' ? 'bg-brand-500 text-white shadow-lg shadow-brand-500/20' : 'text-gray-500 hover:text-white'}`}
-                                        >
-                                            Deposits
-                                        </button>
-                                        <button
-                                            onClick={() => setActiveTab('withdrawals')}
-                                            className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${activeTab === 'withdrawals' ? 'bg-brand-500 text-white shadow-lg shadow-brand-500/20' : 'text-gray-500 hover:text-white'}`}
-                                        >
-                                            Withdrawals
-                                        </button>
-                                    </div>
+                                </div>
+
+                                <div className="mb-4 p-3 bg-brand-500/10 border border-brand-500/20 rounded-xl flex items-start gap-3">
+                                    <span className="text-brand-400 mt-0.5">ℹ️</span>
+                                    <p className="text-xs text-brand-200/80 leading-relaxed">
+                                        For optimal performance and bandwidth conservation, this view strictly displays the <strong>40 most recent</strong> transactions. To view the complete history of all Shroud Protocol deposits and withdrawals, please query the smart contract directly via the Casper explorer.
+                                    </p>
                                 </div>
 
                                 <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
@@ -107,44 +123,56 @@ export default function Statistics() {
                                             <div className="w-10 h-10 border-4 border-brand-500/20 border-t-brand-500 rounded-full animate-spin mx-auto mb-4"></div>
                                             <p className="text-gray-500">Syncing with Casper Testnet...</p>
                                         </div>
-                                    ) : (activeTab === 'deposits' ? activity.deposits : activity.withdrawals).length === 0 ? (
+                                    ) : activity.length === 0 ? (
                                         <div className="py-20 text-center bg-white/5 rounded-2xl border border-dashed border-white/10">
-                                            <p className="text-gray-500">No {activeTab} found yet.</p>
+                                            <p className="text-gray-500">No activity found yet.</p>
                                         </div>
                                     ) : (
-                                        (activeTab === 'deposits' ? activity.deposits : activity.withdrawals).map((item: any, i: number) => (
-                                            <div key={i} className="group p-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl transition-all duration-300 flex items-center space-x-4">
-                                                <div className="w-10 h-10 bg-brand-500/20 rounded-full flex items-center justify-center text-brand-400 font-bold text-xs shrink-0 group-hover:bg-brand-500/30 transition-colors">
-                                                    #{i}
-                                                </div>
-                                                <div className="min-w-0 flex-grow">
-                                                    {activeTab === 'deposits' ? (
-                                                        <>
-                                                            <div className="flex items-center space-x-2 text-gray-400 text-[10px] uppercase tracking-widest mb-1">
-                                                                <HashIcon className="w-3 h-3" />
-                                                                <span>Commitment Hash</span>
-                                                            </div>
-                                                            <div className="font-mono text-xs text-white truncate">
-                                                                {item}
-                                                            </div>
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <div className="flex items-center space-x-2 text-gray-400 text-[10px] uppercase tracking-widest mb-1">
-                                                                <Shield className="w-3 h-3" />
-                                                                <span>Recipient: {item.recipient?.slice(0, 10)}...</span>
-                                                            </div>
-                                                            <div className="font-mono text-xs text-brand-400 truncate">
-                                                                Nullifier: {item.nullifier?.slice(0, 32)}...
-                                                            </div>
-                                                        </>
-                                                    )}
-                                                </div>
-                                                <div className="text-[10px] text-green-500 font-bold uppercase shrink-0 px-2 py-1 bg-green-500/10 rounded-md">
-                                                    {item.timestamp ? new Date(item.timestamp).toLocaleDateString() : 'Verified'}
-                                                </div>
-                                            </div>
-                                        ))
+                                        activity.map((item: any, i: number) => {
+                                            return (
+                                                <a
+                                                    key={i}
+                                                    href={`https://testnet.cspr.live/deploy/${item.hash}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="block group p-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl transition-all duration-300 hover:border-brand-500/30"
+                                                >
+                                                    <div className="flex items-center space-x-4">
+                                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-xs shrink-0 transition-colors ${item.type === 'deposit' ? 'bg-brand-500/20 text-brand-400 group-hover:bg-brand-500/30' : 'bg-accent-500/20 text-accent-400 group-hover:bg-accent-500/30'}`}>
+                                                            {item.type === 'deposit' ? <Database className="w-4 h-4" /> : <ExternalLink className="w-4 h-4" />}
+                                                        </div>
+                                                        <div className="min-w-0 flex-grow">
+                                                            {item.type === 'deposit' ? (
+                                                                <>
+                                                                    <div className="flex items-center space-x-2 text-gray-400 text-[10px] uppercase tracking-widest mb-1">
+                                                                        <HashIcon className="w-3 h-3" />
+                                                                        <span className="text-brand-400 font-bold">DEPOSIT</span>
+                                                                        <span>• Commitment Hash</span>
+                                                                    </div>
+                                                                    <div className="font-mono text-xs text-white truncate">
+                                                                        {item.commitment}
+                                                                    </div>
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <div className="flex items-center space-x-2 text-gray-400 text-[10px] uppercase tracking-widest mb-1">
+                                                                        <Shield className="w-3 h-3" />
+                                                                        <span className="text-accent-400 font-bold">WITHDRAWAL</span>
+                                                                        <span>• Recipient: {item.recipient?.slice(0, 10)}...</span>
+                                                                    </div>
+                                                                    <div className="font-mono text-xs text-white truncate">
+                                                                        Nullifier: {item.nullifier?.slice(0, 32)}...
+                                                                    </div>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                        <div className="text-[10px] text-green-500 font-bold uppercase shrink-0 px-2 py-1 bg-green-500/10 rounded-md whitespace-nowrap">
+                                                            {item.timestamp ? new Date(item.timestamp).toLocaleDateString() : 'Verified'}
+                                                        </div>
+                                                    </div>
+                                                </a>
+                                            );
+                                        })
                                     )}
                                 </div>
                             </div>

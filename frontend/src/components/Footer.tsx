@@ -46,6 +46,16 @@ export default function Footer() {
                                 </Link>
                             </li>
                             <li>
+                                <Link href="/whitepaper" className="hover:text-brand-400 transition-colors">
+                                    Whitepaper
+                                </Link>
+                            </li>
+                            <li>
+                                <Link href="/roadmap" className="hover:text-brand-400 transition-colors">
+                                    Roadmap
+                                </Link>
+                            </li>
+                            <li>
                                 <a href="https://github.com/furkanahmetk/shroud-protocol" target="_blank" rel="noopener noreferrer" className="hover:text-brand-400 transition-colors">
                                     GitHub
                                 </a>
@@ -60,6 +70,9 @@ export default function Footer() {
                             </li>
                             <li>
                                 <a href="https://t.me/shroud_protocol" target="_blank" rel="noopener noreferrer" className="hover:text-brand-400 transition-colors">Telegram</a>
+                            </li>
+                            <li>
+                                <a href="https://x.com/ProtocolShroud" target="_blank" rel="noopener noreferrer" className="hover:text-brand-400 transition-colors">Twitter (X)</a>
                             </li>
                         </ul>
                     </div>
