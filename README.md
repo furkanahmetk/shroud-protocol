@@ -120,6 +120,16 @@ The protocol uses a fixed denomination. Defaults are `100 CSPR`.
 - Frontend: `NEXT_PUBLIC_DENOMINATION_CSPR=100`
 - CLI: `SHROUD_DENOMINATION_CSPR=100`
 
+### Casper Cloud Config (Frontend Proxy)
+
+Explorer and indexing calls run through `frontend/src/pages/api/proxy.ts` with Casper Cloud as primary source.
+
+- `CASPER_NODE_RPC_URL=https://node.testnet.casper.network/rpc`
+- `CSPR_CLOUD_API_TOKEN=...` (server-side only, raw key without `Bearer ` prefix)
+- `CSPR_CLOUD_REST_BASE_URL=https://api.testnet.cspr.cloud`
+- `LEGACY_EXPLORER_API_URL=https://api.testnet.cspr.live`
+- `CSPR_DATA_SOURCE_MODE=hybrid` (`hybrid | cloud-only | legacy-only`)
+
 ### 🛠️ Manual Installation
 
 If you prefer to install components manually:

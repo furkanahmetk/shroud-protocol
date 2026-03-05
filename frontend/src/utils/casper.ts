@@ -350,7 +350,7 @@ export const fetchProtocolActivity = async (contractHash: string, minTimestamp: 
         let hasMore = true;
 
         while (hasMore && page <= 50) { // Increased cap since we break early now
-            const response = await explorerCall(`/purses/${mainPurse}/transfers?page_size=100&page=${page}`);
+            const response = await explorerCall(`/purse-urefs/${mainPurse}/transfers?page_size=100&page=${page}`);
             const data = response.data || [];
 
             if (data.length === 0) break;
@@ -397,7 +397,7 @@ export const fetchProtocolActivity = async (contractHash: string, minTimestamp: 
         const uniqueHashes = Array.from(new Set(allTransfers.map((t: any) => t.deploy_hash))) as string[];
 
         for (const hash of uniqueHashes) {
-            // Throttle to avoid rate limits (cspr.live/server proxy limits)
+            // Throttle to avoid upstream API rate limits through proxy.
             await new Promise(resolve => setTimeout(resolve, 200));
 
             try {
@@ -462,7 +462,7 @@ export const fetchRecentActivity = async (
         const mainPurse = await getMainPurse(contractHash);
 
         // ONLY fetch the first page 
-        const response = await explorerCall(`/purses/${mainPurse}/transfers?page_size=${limit * 2}&page=1`);
+        const response = await explorerCall(`/purse-urefs/${mainPurse}/transfers?page_size=${limit * 2}&page=1`);
         const data = response.data || [];
 
         const uniqueHashes = Array.from(new Set(data.map((t: any) => t.deploy_hash))) as string[];
@@ -540,7 +540,7 @@ export const fetchQuickStats = async (contractHash: string): Promise<{ totalTran
         // To maintain the `fetchQuickStats` instantaneous speed, we will accurately count transfers 
         // by looking at the from_purse and to_purse on the transfer object itself.
         while (hasMore && page <= 10) {
-            const response = await explorerCall(`/purses/${mainPurse}/transfers?page_size=100&page=${page}`);
+            const response = await explorerCall(`/purse-urefs/${mainPurse}/transfers?page_size=100&page=${page}`);
             const data = response.data || [];
 
             for (const t of data) {
@@ -632,7 +632,7 @@ export const fetchProtocolActivityOptimized = async (
                 throw new Error('Sync aborted');
             }
 
-            const response = await explorerCall(`/purses/${mainPurse}/transfers?page_size=100&page=${page}`);
+            const response = await explorerCall(`/purse-urefs/${mainPurse}/transfers?page_size=100&page=${page}`);
             const data = response.data || [];
 
             if (data.length === 0) break;
@@ -1012,5 +1012,3 @@ export const getBalance = async (publicKeyHex: string): Promise<string> => {
         return "0";
     }
 };
-
-
