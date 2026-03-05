@@ -1,56 +1,46 @@
-#![no_std]
-#![no_main]
+#![cfg_attr(target_arch = "wasm32", no_std)]
+#![cfg_attr(target_arch = "wasm32", no_main)]
 
+#[cfg(target_arch = "wasm32")]
 extern crate alloc;
 
+#[cfg(target_arch = "wasm32")]
 use casper_contract::{
-    contract_api::{runtime, system, account},
+    contract_api::{account, runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::{
-    runtime_args, URef, U256, U512, contracts::ContractPackageHash,
-};
+#[cfg(target_arch = "wasm32")]
+use casper_types::{contracts::ContractPackageHash, runtime_args, U256, U512, URef};
 
-// Use wee_alloc as the global allocator
 #[cfg(target_arch = "wasm32")]
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
-// Panic handler required for no_std
+#[cfg(target_arch = "wasm32")]
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
-// Entry point for deposit session code
-// This creates a cargo_purse, transfers CSPR to it, then calls the contract's deposit
+#[cfg(target_arch = "wasm32")]
 #[no_mangle]
 pub extern "C" fn call() {
-    // Get arguments
     let contract_package_hash: ContractPackageHash = runtime::get_named_arg("contract_package_hash");
     let commitment: U256 = runtime::get_named_arg("commitment");
     let amount: U512 = runtime::get_named_arg("amount");
-    
-    // Get the account's main purse
+
     let main_purse: URef = account::get_main_purse();
-    
-    // Create a temporary purse (cargo_purse) and transfer the deposit amount to it
     let cargo_purse: URef = system::create_purse();
-    system::transfer_from_purse_to_purse(main_purse, cargo_purse, amount, None)
-        .unwrap_or_revert();
-    
-    // Call the contract's deposit entry point with the cargo_purse
-    // Odra expects "cargo_purse" as a named argument for payable functions
+    system::transfer_from_purse_to_purse(main_purse, cargo_purse, amount, None).unwrap_or_revert();
+
     let args = runtime_args! {
         "commitment" => commitment,
         "amount" => amount,
         "cargo_purse" => cargo_purse,
     };
-    
-    runtime::call_versioned_contract::<()>(
-        contract_package_hash,
-        None, // Use latest version
-        "deposit",
-        args,
-    );
+
+    runtime::call_versioned_contract::<()>(contract_package_hash, None, "deposit", args);
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+fn main() {}

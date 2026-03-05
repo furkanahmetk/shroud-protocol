@@ -1,5 +1,9 @@
 import { CasperClient, CLPublicKey, DeployUtil, RuntimeArgs, CLValueBuilder, Keys } from 'casper-js-sdk';
 import * as fs from 'fs';
+import {
+    DEFAULT_DEPOSIT_PAYMENT_BUFFER_MOTES,
+    DEFAULT_WITHDRAW_PAYMENT_MOTES
+} from './config';
 
 const NETWORK_NAME = process.env.CASPER_NETWORK_NAME || 'casper-test';
 const EXPLORER_API_URL = process.env.CASPER_EXPLORER_API_URL || 'https://api.testnet.cspr.live';
@@ -46,8 +50,8 @@ export class BlockchainClient {
                     1800000
                 ),
                 DeployUtil.ExecutableDeployItem.newModuleBytes(sessionWasm, args),
-                // Payment covers: gas (~50 CSPR) + deposit amount (100 CSPR)
-                DeployUtil.standardPayment(200000000000) // 200 CSPR total
+                // Payment covers: deposit amount + conservative gas buffer.
+                DeployUtil.standardPayment((amount + DEFAULT_DEPOSIT_PAYMENT_BUFFER_MOTES).toString())
             );
 
             const signedDeploy = deploy.sign([keyPair]);
@@ -73,7 +77,7 @@ export class BlockchainClient {
                 'deposit',
                 args
             ),
-            DeployUtil.standardPayment(100000000000)
+            DeployUtil.standardPayment(DEFAULT_WITHDRAW_PAYMENT_MOTES.toString())
         );
 
         const signedDeploy = deploy.sign([keyPair]);
@@ -115,7 +119,7 @@ export class BlockchainClient {
                 'withdraw',
                 args
             ),
-            DeployUtil.standardPayment(100000000000) // 100 CSPR
+            DeployUtil.standardPayment(DEFAULT_WITHDRAW_PAYMENT_MOTES.toString())
         );
 
         const signedDeploy = deploy.sign([keyPair]);

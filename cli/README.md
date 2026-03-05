@@ -13,7 +13,7 @@ npm run build
 
 ### Deposit
 
-Deposit 100 CSPR into the mixer. Generates a secret key that must be saved to withdraw later.
+Deposit the configured fixed denomination (default: 100 CSPR) into the mixer. Generates a secret key that must be saved to withdraw later.
 
 ```bash
 npm start -- deposit \
@@ -37,7 +37,7 @@ npm start -- deposit \
 
 ### Withdraw
 
-Withdraw 100 CSPR from the mixer using your secret key.
+Withdraw the configured fixed denomination (default: 100 CSPR) from the mixer using your secret key.
 
 ```bash
 npm start -- withdraw \
@@ -60,6 +60,28 @@ npm start -- withdraw \
 | `-r, --recipient <key>` | Recipient public key (hex) | Yes |
 | `-w, --wasm <path>` | Path to circuit WASM | Yes |
 | `-z, --zkey <path>` | Path to proving key | Yes |
+
+### Economics Report
+
+Generate a denomination decision report (60-day window by default) aligned with roadmap and whitepaper KPI gates.
+
+```bash
+npm start -- economics-report \
+  --node https://node.testnet.casper.network \
+  --contract <CONTRACT_HASH> \
+  --out ./economics-report.json \
+  --window-days 60 \
+  --open-beta
+```
+
+**Options:**
+| Option | Description | Required |
+|--------|-------------|----------|
+| `-n, --node <url>` | Casper node URL | Yes |
+| `-c, --contract <hash>` | Contract package hash | Yes |
+| `-o, --out <path>` | Output path for report JSON | Yes |
+| `-w, --window-days <number>` | Rolling analysis window in days (default `60`) | No |
+| `--open-beta` | Enables 4-week freeze rule (`FREEZE_FOR_MAINNET`) | No |
 
 ## Example Flow
 

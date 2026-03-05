@@ -1,6 +1,8 @@
 import { Command } from 'commander';
 import { depositCommand } from './deposit';
 import { withdrawCommand } from './withdraw';
+import { economicsReportCommand } from './economics';
+import { DENOMINATION_LABEL } from './config';
 
 const program = new Command();
 
@@ -10,7 +12,7 @@ program
     .version('1.0.0');
 
 program.command('deposit')
-    .description('Deposit 100 CSPR into the mixer')
+    .description(`Deposit ${DENOMINATION_LABEL} into the mixer`)
     .requiredOption('-n, --node <url>', 'Casper node URL')
     .requiredOption('-c, --contract <hash>', 'Contract hash')
     .requiredOption('-k, --key <path>', 'Path to sender secret key')
@@ -25,7 +27,7 @@ program.command('deposit')
     });
 
 program.command('withdraw')
-    .description('Withdraw 100 CSPR from the mixer')
+    .description(`Withdraw ${DENOMINATION_LABEL} from the mixer`)
     .requiredOption('-n, --node <url>', 'Casper node URL')
     .requiredOption('-c, --contract <hash>', 'Contract hash')
     .requiredOption('-s, --secrets <path>', 'Path to secrets file')
@@ -36,6 +38,31 @@ program.command('withdraw')
     .action(async (options) => {
         try {
             await withdrawCommand(options.node, options.contract, options.recipient, options.secrets, options.wasm, options.zkey, options.key);
+        } catch (e) {
+            console.error(e);
+        }
+    });
+
+program.command('economics-report')
+    .description('Generate roadmap/whitepaper denomination KPI report')
+    .requiredOption('-n, --node <url>', 'Casper node URL')
+    .requiredOption('-c, --contract <hash>', 'Contract hash')
+    .requiredOption('-o, --out <path>', 'Output JSON path')
+    .option('-w, --window-days <number>', 'Rolling window length in days', '60')
+    .option('--open-beta', 'Enable open beta freeze rule')
+    .action(async (options) => {
+        try {
+            const windowDays = Number.parseInt(options.windowDays, 10);
+            if (!Number.isFinite(windowDays) || windowDays <= 0) {
+                throw new Error('window-days must be a positive integer');
+            }
+            await economicsReportCommand(
+                options.node,
+                options.contract,
+                options.out,
+                windowDays,
+                Boolean(options.openBeta)
+            );
         } catch (e) {
             console.error(e);
         }

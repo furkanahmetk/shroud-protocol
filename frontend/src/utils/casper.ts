@@ -30,6 +30,9 @@ import blake from 'blakejs';
 import { RequestQueue, QueueTask, QueueProgress } from './requestQueue';
 import { SyncProgress } from './syncProgress';
 
+const DEFAULT_DEPOSIT_PAYMENT_MOTES = 150_000_000_000n;
+const DEFAULT_WITHDRAW_PAYMENT_MOTES = 100_000_000_000n;
+
 // Use proxy to avoid CORS in browser
 const NODE_URL = typeof window !== 'undefined' ? '/api/proxy' : 'https://node.testnet.casper.network/rpc';
 
@@ -863,7 +866,7 @@ export const createDepositSessionTransaction = (
         amount: CLValue.newCLUInt512(amount.toString())
     });
 
-    const paymentAmount = 150_000_000_000; // 150 CSPR
+    const paymentAmount = DEFAULT_DEPOSIT_PAYMENT_MOTES.toString();
 
     const deployParams = new DeployHeader();
     deployParams.account = senderKey;
@@ -878,7 +881,7 @@ export const createDepositSessionTransaction = (
         args
     );
 
-    const payment = ExecutableDeployItem.standardPayment(paymentAmount.toString());
+    const payment = ExecutableDeployItem.standardPayment(paymentAmount);
 
     return Deploy.makeDeploy(deployParams, payment, session);
 };
@@ -932,7 +935,7 @@ export const createWithdrawTransaction = (
         undefined // version
     );
 
-    const payment = ExecutableDeployItem.standardPayment('100000000000'); // 100 CSPR
+    const payment = ExecutableDeployItem.standardPayment(DEFAULT_WITHDRAW_PAYMENT_MOTES.toString());
 
     return Deploy.makeDeploy(deployParams, payment, session);
 };
@@ -1009,6 +1012,5 @@ export const getBalance = async (publicKeyHex: string): Promise<string> => {
         return "0";
     }
 };
-
 
 

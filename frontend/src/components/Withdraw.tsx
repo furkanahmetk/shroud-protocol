@@ -6,6 +6,7 @@ import { useWallet } from '../hooks/useWallet';
 import { useCommitment } from '../context/CommitmentContext';
 import { SyncProgressTracker } from '../utils/syncProgress';
 import { loadFromStorage, saveToStorage } from '../utils/storage';
+import { DENOMINATION_LABEL } from '../utils/denomination';
 const snarkjs = require('snarkjs');
 
 interface WithdrawProps {
@@ -279,7 +280,7 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
                 ) : (
                     <>
                         <ArrowUpCircle className="w-5 h-5 mr-2 group-hover:animate-bounce" />
-                        Withdraw 100 CSPR
+                        Withdraw {DENOMINATION_LABEL}
                     </>
                 )}
             </button>

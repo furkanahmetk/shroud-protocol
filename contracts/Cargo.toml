@@ -6,6 +6,9 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+livenet-tests = []
+
 [dependencies]
 odra = { version = "2.5.0" }
 

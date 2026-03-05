@@ -4,13 +4,13 @@ This guide provides detailed scenarios and examples for using the Shroud Protoco
 
 ## 🌟 Scenario 1: The Basic Privacy Flow (Alice & Bob)
 
-**Goal**: Alice wants to send 100 CSPR to Bob without anyone knowing she is the sender.
+**Goal**: Alice wants to privately send the protocol's fixed denomination (default: 100 CSPR) to Bob without anyone knowing she is the sender.
 
 1.  **Alice Deposits**:
     -   Alice connects her wallet (Address A) to the Shroud Frontend.
     -   She navigates to the **Deposit** tab.
     ![Deposit Interface](docs/img/docs_deposit_hq_1768312318135.png)
-    -   She clicks "Deposit 100 CSPR".
+    -   She clicks "Deposit" (fixed denomination, default: 100 CSPR).
     -   **AUTOMATIC BACKUP**: The app generates a **Secret Key** and instantly triggers a JSON file download (`shroud-secret-*.json`).
     -   Alice saves this file securely (though it's also shown on screen as a backup).
     -   The transaction is confirmed on-chain.
@@ -28,7 +28,7 @@ This guide provides detailed scenarios and examples for using the Shroud Protoco
     -   She enters **Bob's Address (Address B)** as the recipient.
     -   She clicks "Withdraw".
     -   The app generates a ZK Proof that says "I know a secret for *one* of the deposits, but I won't tell you which one."
-    -   The contract verifies the proof and sends 100 CSPR to Address B.
+    -   The contract verifies the proof and sends the fixed denomination to Address B.
 
 **Result**: The blockchain shows Address A deposited, and Address B received funds. There is no on-chain link between A and B.
 
@@ -128,4 +128,4 @@ npm start -- withdraw \
 
 1.  **Fresh Addresses**: Always withdraw to a completely new address that has no history with your deposit address.
 2.  **Time Delays**: Wait for multiple other deposits to occur between your deposit and withdrawal.
-3.  **Standard Amounts**: The protocol uses fixed amounts (100 CSPR) to prevent amount-based correlation.
+3.  **Standard Amounts**: The protocol uses a fixed amount (default 100 CSPR) to prevent amount-based correlation.

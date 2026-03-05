@@ -68,6 +68,7 @@ The protocol consists of three main components:
 - `frontend/`: Next.js web interface.
 - `scripts/`: Automation scripts for building, testing, and setup.
 - `docs/`: Detailed developer documentation.
+  - `docs/DENOMINATION_POLICY.md`: KPI-based fixed denomination decision policy.
 
 ## Getting Started
 
@@ -112,6 +113,13 @@ We provide scripts to automate the build and setup process.
     ./scripts/setup_circuits.sh
     ```
 
+### Denomination Config
+
+The protocol uses a fixed denomination. Defaults are `100 CSPR`.
+
+- Frontend: `NEXT_PUBLIC_DENOMINATION_CSPR=100`
+- CLI: `SHROUD_DENOMINATION_CSPR=100`
+
 ### 🛠️ Manual Installation
 
 If you prefer to install components manually:
@@ -154,7 +162,7 @@ The easiest way to use Shroud Protocol is via the web interface.
     - Approve the connection in the popup.
 3.  **Deposit**:
     - Go to the **Deposit** tab and ensure your wallet is connected.
-    - Click **"Deposit 100 CSPR"**.
+    - Click **"Deposit"** (fixed denomination, default: **100 CSPR**).
     - Sign the transaction in your wallet.
     - **AUTOMATIC BACKUP**: The secret key will be displayed on screen AND automatically downloaded to your computer as a JSON file. Keep it safe!
 4.  **Withdraw**:
@@ -183,7 +191,7 @@ npm run build
 
 *   **Deposit**:
     ```bash
-    # Generates a secret, saves it to output, and deposits 100 CSPR
+    # Generates a secret, saves it to output, and deposits the configured fixed denomination (default: 100 CSPR)
     npm start -- deposit \
       --node https://node.testnet.casper.network \
       --contract <CONTRACT_HASH> \
@@ -195,7 +203,7 @@ npm run build
 
 *   **Withdraw**:
     ```bash
-    # Uses the secret to generate a proof and withdraw to a recipient
+    # Uses the secret to generate a proof and withdraw the configured fixed denomination
     npm start -- withdraw \
       --node https://node.testnet.casper.network \
       --contract <CONTRACT_HASH> \
@@ -204,6 +212,17 @@ npm run build
       --wasm ../circuits/withdraw_js/withdraw.wasm \
       --zkey ../circuits/withdraw_final.zkey \
       --key ./path/to/payer_key.pem
+    ```
+
+*   **Economics Report (Denomination Decision)**:
+    ```bash
+    # Generates a 60-day KPI report and decision state (KEEP_100 / REVIEW_50 / FREEZE_FOR_MAINNET)
+    npm start -- economics-report \
+      --node https://node.testnet.casper.network \
+      --contract <CONTRACT_HASH> \
+      --out ./economics-report.json \
+      --window-days 60 \
+      --open-beta
     ```
 
 ## License

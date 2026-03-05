@@ -1,5 +1,6 @@
 import { CryptoUtils } from './crypto';
 import { BlockchainClient } from './blockchain';
+import { DENOMINATION_LABEL, DENOMINATION_MOTES } from './config';
 
 export async function depositCommand(
     nodeUrl: string,
@@ -28,7 +29,7 @@ export async function depositCommand(
         console.log(`📦 Using session WASM for real CSPR transfer: ${sessionWasmPath}`);
     }
     const blockchain = new BlockchainClient(nodeUrl, contractHash);
-    const amount = BigInt(100_000_000_000); // 100 CSPR
+    const amount = DENOMINATION_MOTES;
 
     const deployHash = await blockchain.deposit(
         commitment,
@@ -37,7 +38,7 @@ export async function depositCommand(
         sessionWasmPath
     );
 
-    console.log(`\n✅ Deposit submitted!`);
+    console.log(`\n✅ ${DENOMINATION_LABEL} deposit submitted!`);
     console.log(`Deploy hash: ${deployHash}`);
     console.log(`\n⚠️  IMPORTANT: Keep ${outputFile} safe! You need it to withdraw.`);
 }

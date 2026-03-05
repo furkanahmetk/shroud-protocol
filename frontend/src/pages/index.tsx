@@ -12,6 +12,7 @@ import Footer from '@/components/Footer';
 import Navbar from '@/components/Navbar';
 import { CONTRACT_HASH } from '@/utils/casper';
 import { useEffect } from 'react';
+import { DENOMINATION_CSPR } from '@/utils/denomination';
 
 export default function Home() {
     const [activeTab, setActiveTab] = useState<'deposit' | 'withdraw'>('deposit');
@@ -82,7 +83,7 @@ export default function Home() {
 
                             <div className="mt-12 grid grid-cols-2 md:grid-cols-4 gap-8 border-t border-white/10 pt-8">
                                 <div>
-                                    <div className="text-3xl font-bold text-white">100</div>
+                                    <div className="text-3xl font-bold text-white">{DENOMINATION_CSPR}</div>
                                     <div className="text-sm text-gray-500 font-medium mt-1 uppercase tracking-tighter">CSPR / Deposit</div>
                                 </div>
                                 <div>

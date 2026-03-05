@@ -5,6 +5,7 @@ import { createDepositSessionTransaction, createDepositSessionTransaction as _de
 import { useWallet } from '../hooks/useWallet';
 import { useCommitment } from '../context/CommitmentContext';
 import { SyncProgressTracker } from '../utils/syncProgress';
+import { DENOMINATION_CSPR, DENOMINATION_LABEL, DENOMINATION_MOTES } from '../utils/denomination';
 
 interface DepositProps {
     isConnected: boolean;
@@ -18,7 +19,6 @@ const formatETA = (ms: number | null): string => {
 };
 
 export default function Deposit({ isConnected, activeKey }: DepositProps) {
-    const [amount] = useState('100');
     const [isProcessing, setIsProcessing] = useState(false);
     const [secret, setSecret] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
@@ -42,7 +42,7 @@ export default function Deposit({ isConnected, activeKey }: DepositProps) {
             const wasmBytes = new Uint8Array(await wasmResponse.arrayBuffer());
 
             // 4. Create Transaction which uses Session Code (SDK v5)
-            const transaction = createDepositSessionTransaction(activeKey, commitment, BigInt(100_000_000_000), wasmBytes);
+            const transaction = createDepositSessionTransaction(activeKey, commitment, DENOMINATION_MOTES, wasmBytes);
 
             // 5. Sign Transaction
             const signedTransactionJson = await signTransaction(transaction, activeKey);
@@ -127,7 +127,7 @@ export default function Deposit({ isConnected, activeKey }: DepositProps) {
                 <div className="flex items-center space-x-3">
                     <input
                         type="text"
-                        value={amount}
+                        value={DENOMINATION_CSPR.toString()}
                         readOnly
                         className="bg-transparent text-4xl font-bold w-full focus:outline-none text-white font-mono tracking-tight"
                     />
@@ -205,7 +205,7 @@ export default function Deposit({ isConnected, activeKey }: DepositProps) {
                         ) : (
                             <>
                                 <ArrowDownCircle className="w-5 h-5 mr-2 group-hover:animate-bounce" />
-                                Deposit 100 CSPR
+                                Deposit {DENOMINATION_LABEL}
                             </>
                         )}
                     </button>

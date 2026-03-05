@@ -4,6 +4,7 @@ import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { Activity, Users, DollarSign, Clock, Shield, Lock, ExternalLink, CheckCircle, Database, Hash as HashIcon } from 'lucide-react';
 import { getContractHash, CONTRACT_HASH } from '@/utils/casper';
+import { DENOMINATION_LABEL } from '@/utils/denomination';
 
 export default function Statistics() {
     const [activity, setActivity] = useState<any[]>([]);
@@ -52,7 +53,7 @@ export default function Statistics() {
     const contractInfo = {
         packageHash: getContractHash(),
         network: 'casper-test',
-        depositAmount: '100 CSPR',
+        depositAmount: DENOMINATION_LABEL,
         proofSystem: 'Groth16 (ZK-SNARK)',
         hashFunction: 'MiMC7',
         merkleTreeDepth: 20,
