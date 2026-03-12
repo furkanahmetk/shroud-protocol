@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
-import { Shield, Wallet, Menu, X, Book, Code, Layers, Terminal, Cpu, FileText } from 'lucide-react';
-import { useWallet } from '@/hooks/useWallet';
+import { Book, Code, Layers, Terminal, Cpu, FileText } from 'lucide-react';
 
 import Footer from '@/components/Footer';
 import Navbar from '@/components/Navbar';

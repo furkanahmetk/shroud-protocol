@@ -4,9 +4,10 @@ import Image from 'next/image';
 import { useRouter } from 'next/router';
 import { Wallet, Menu, X, ChevronDown, User, LogOut, RefreshCw, Copy, Check, Github } from 'lucide-react';
 import { useWallet } from '@/hooks/useWallet';
+import SignInModal from './SignInModal';
 
 export default function Navbar() {
-    const { isConnected, activeKey, connect, disconnect } = useWallet();
+    const { isConnected, activeKey, connect, disconnect, switchAccount, signInModalOpen, closeSignInModal } = useWallet();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const [isCopied, setIsCopied] = useState(false);
@@ -33,6 +34,11 @@ export default function Navbar() {
 
     const handleConnect = async () => {
         await connect();
+        setIsDropdownOpen(false);
+    };
+
+    const handleSwitchAccount = async () => {
+        await switchAccount();
         setIsDropdownOpen(false);
     };
 
@@ -133,7 +139,7 @@ export default function Navbar() {
                                 </div>
                                 <div className="p-1">
                                     <button
-                                        onClick={handleConnect}
+                                        onClick={handleSwitchAccount}
                                         className="w-full flex items-center px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/10 rounded-xl transition-all group"
                                     >
                                         <RefreshCw className="w-4 h-4 mr-3 text-brand-400 group-hover:rotate-180 transition-transform duration-500" />
@@ -203,7 +209,7 @@ export default function Navbar() {
                             {isConnected && (
                                 <>
                                     <button
-                                        onClick={handleConnect}
+                                        onClick={handleSwitchAccount}
                                         className="w-full flex items-center justify-center px-5 py-3 rounded-xl font-medium text-sm bg-white/5 text-gray-300 border border-white/10"
                                     >
                                         <RefreshCw className="w-4 h-4 mr-2" />
@@ -222,6 +228,7 @@ export default function Navbar() {
                     </div>
                 </div>
             )}
+            <SignInModal isOpen={signInModalOpen} onClose={closeSignInModal} />
         </header>
     );
 }

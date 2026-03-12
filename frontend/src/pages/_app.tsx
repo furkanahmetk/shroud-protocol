@@ -1,8 +1,16 @@
+import React from 'react'
 import '@/styles/globals.css'
 import '@fontsource/inter/index.css'
 import type { AppProps } from 'next/app'
 import Head from 'next/head'
 import { CommitmentProvider } from '../context/CommitmentContext'
+
+import dynamic from 'next/dynamic'
+
+const CsprClickWrapper = dynamic(
+    () => import('../components/CsprClickWrapper'),
+    { ssr: false }
+)
 
 export default function App({ Component, pageProps }: AppProps) {
     return (
@@ -15,7 +23,9 @@ export default function App({ Component, pageProps }: AppProps) {
             </Head>
             <main className="font-sans">
                 <CommitmentProvider>
-                    <Component {...pageProps} />
+                    <CsprClickWrapper>
+                        <Component {...pageProps} />
+                    </CsprClickWrapper>
                 </CommitmentProvider>
             </main>
         </>
