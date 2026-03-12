@@ -1,8 +1,19 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Transaction, PublicKey, Deploy } from 'casper-js-sdk';
-import { getBalance } from '../utils/casper';
-
 import { SigningLock } from '../utils/signingLock';
+import { useCsprClick } from '../context/CsprClickContext';
+
+// cspr.click event types (inline to avoid turbopack resolution issues)
+interface ClickAccount {
+    provider: string;
+    public_key: string;
+    balance?: string;
+    liquid_balance?: string;
+}
+interface SignedInClickEvent { account: ClickAccount; }
+interface SwitchedAccountClickEvent { account: ClickAccount; }
+interface DisconnectedClickEvent { provider: string; }
+interface UnsolicitedAccountChangeClickEvent { account: ClickAccount; }
 
 export interface WalletState {
     isConnected: boolean;
@@ -11,7 +22,19 @@ export interface WalletState {
     balance: string | null;
 }
 
+const motesToCspr = (motes: string | undefined): string | null => {
+    if (!motes) return null;
+    try {
+        const cspr = parseInt(motes) / 1_000_000_000;
+        return cspr.toFixed(2);
+    } catch {
+        return null;
+    }
+};
+
 export const useWallet = () => {
+    const clickRef = useCsprClick();
+
     const [walletState, setWalletState] = useState<WalletState>({
         isConnected: false,
         activeKey: null,
@@ -19,232 +42,242 @@ export const useWallet = () => {
         balance: null,
     });
 
-    const getProvider = useCallback(() => {
-        if (typeof window !== 'undefined' && 'CasperWalletProvider' in window) {
-            // @ts-ignore
-            return window.CasperWalletProvider();
-        }
-        return null;
-    }, []);
+    const connectedRef = useRef(false);
 
-    const updateBalance = useCallback(async (activeKey: string) => {
-        // Skip balance update if signing is in progress
-        if (SigningLock.isLocked()) {
-            console.log('[useWallet] Skipping balance update - signing in progress');
-            return;
-        }
-
+    const refreshBalance = useCallback(async () => {
+        if (!clickRef || SigningLock.isLocked()) return;
         try {
-            const balance = await getBalance(activeKey);
-            setWalletState(prev => ({ ...prev, balance }));
+            const account = await clickRef.getActiveAccountAsync({ withBalance: true });
+            if (account?.liquid_balance || account?.balance) {
+                const balance = motesToCspr(account.liquid_balance || account.balance);
+                if (balance !== null) {
+                    setWalletState(prev => ({ ...prev, balance }));
+                }
+            }
         } catch (e) {
-            console.error("Failed to update balance", e);
+            console.error('[useWallet] Failed to refresh balance', e);
         }
-    }, []);
+    }, [clickRef]);
 
     useEffect(() => {
-        const checkConnection = async () => {
-            // Skip connection check if signing is in progress
-            if (SigningLock.isLocked()) {
-                console.log('[useWallet] Skipping connection check - signing in progress');
-                return;
+        if (!clickRef) return;
+
+        // Check if already signed in (e.g., persistent session on page reload)
+        const existing = clickRef.getActiveAccount();
+        if (existing?.public_key) {
+            connectedRef.current = true;
+            setWalletState({
+                isConnected: true,
+                activeKey: existing.public_key,
+                isLocked: false,
+                balance: motesToCspr(existing.liquid_balance || existing.balance),
+            });
+            refreshBalance();
+        }
+
+        const handleSignedIn = (evt: SignedInClickEvent) => {
+            console.log('[useWallet] csprclick:signed_in', evt.account.public_key);
+            connectedRef.current = true;
+            setWalletState({
+                isConnected: true,
+                activeKey: evt.account.public_key,
+                isLocked: false,
+                balance: motesToCspr(evt.account.liquid_balance || evt.account.balance),
+            });
+            if (!evt.account.liquid_balance && !evt.account.balance) {
+                refreshBalance();
             }
+        };
 
-            const provider = getProvider();
-
-            if (provider) {
-                try {
-                    const isConnected = await provider.isConnected();
-                    if (isConnected) {
-                        const activeKey = await provider.getActivePublicKey();
-
-                        // Check if we need to update balance (if key changed or balance is null)
-                        const shouldUpdateBalance = activeKey !== walletState.activeKey || walletState.balance === null;
-
-                        setWalletState(prev => ({
-                            ...prev,
-                            isConnected: true,
-                            activeKey: activeKey,
-                            isLocked: false,
-                        }));
-
-                        if (shouldUpdateBalance) {
-                            updateBalance(activeKey);
-                        }
-                    } else {
-                        setWalletState(prev => ({
-                            ...prev,
-                            isConnected: false,
-                            activeKey: null,
-                            balance: null
-                        }));
-                    }
-                } catch (e) {
-                    console.error("Error checking wallet connection:", e);
+        const handleSwitchedAccount = (evt: SwitchedAccountClickEvent) => {
+            console.log('[useWallet] csprclick:switched_account', evt.account.public_key);
+            if (!SigningLock.isLocked()) {
+                setWalletState(prev => ({
+                    ...prev,
+                    activeKey: evt.account.public_key,
+                    balance: motesToCspr(evt.account.liquid_balance || evt.account.balance),
+                }));
+                if (!evt.account.liquid_balance && !evt.account.balance) {
+                    refreshBalance();
                 }
             }
         };
 
-        checkConnection();
-        const interval = setInterval(checkConnection, 5000); // Check every 5s
-
-        const handleActiveKeyChanged = (event: any) => {
-            console.log("Active key changed:", event.detail);
+        const handleUnsolicitedChange = (evt: UnsolicitedAccountChangeClickEvent) => {
+            console.log('[useWallet] csprclick:unsolicited_account_change', evt.account.public_key);
             if (!SigningLock.isLocked()) {
-                checkConnection();
+                setWalletState(prev => ({
+                    ...prev,
+                    activeKey: evt.account.public_key,
+                    balance: motesToCspr(evt.account.liquid_balance || evt.account.balance),
+                }));
             }
         };
 
-        const handleDisconnected = () => {
-            setWalletState(prev => ({ ...prev, isConnected: false, activeKey: null, balance: null }));
+        const handleSignedOut = () => {
+            console.log('[useWallet] csprclick:signed_out');
+            connectedRef.current = false;
+            setWalletState({ isConnected: false, activeKey: null, isLocked: false, balance: null });
         };
 
-        const handleConnected = () => {
-            if (!SigningLock.isLocked()) {
-                checkConnection();
+        const handleDisconnected = (evt: DisconnectedClickEvent) => {
+            console.log('[useWallet] csprclick:disconnected', evt.provider);
+            connectedRef.current = false;
+            setWalletState({ isConnected: false, activeKey: null, isLocked: false, balance: null });
+        };
+
+        clickRef.on('csprclick:signed_in', handleSignedIn);
+        clickRef.on('csprclick:switched_account', handleSwitchedAccount);
+        clickRef.on('csprclick:unsolicited_account_change', handleUnsolicitedChange);
+        clickRef.on('csprclick:signed_out', handleSignedOut);
+        clickRef.on('csprclick:disconnected', handleDisconnected);
+
+        // Balance polling fallback (30s)
+        const balanceInterval = setInterval(() => {
+            if (connectedRef.current && !SigningLock.isLocked()) {
+                refreshBalance();
             }
-        };
-
-        if (typeof window !== 'undefined') {
-            window.addEventListener('casper-wallet:activeKeyChanged', handleActiveKeyChanged);
-            window.addEventListener('casper-wallet:disconnected', handleDisconnected);
-            window.addEventListener('casper-wallet:connected', handleConnected);
-        }
+        }, 30000);
 
         return () => {
-            clearInterval(interval);
-            if (typeof window !== 'undefined') {
-                window.removeEventListener('casper-wallet:activeKeyChanged', handleActiveKeyChanged);
-                window.removeEventListener('casper-wallet:disconnected', handleDisconnected);
-                window.removeEventListener('casper-wallet:connected', handleConnected);
-            }
+            clickRef.off('csprclick:signed_in', handleSignedIn);
+            clickRef.off('csprclick:switched_account', handleSwitchedAccount);
+            clickRef.off('csprclick:unsolicited_account_change', handleUnsolicitedChange);
+            clickRef.off('csprclick:signed_out', handleSignedOut);
+            clickRef.off('csprclick:disconnected', handleDisconnected);
+            clearInterval(balanceInterval);
         };
-    }, [getProvider, updateBalance]); // removed walletState from deps to avoid infinite loop
+    }, [clickRef, refreshBalance]);
 
-    const connect = async (): Promise<boolean> => {
-        const provider = getProvider();
-        if (!provider) {
-            alert('Casper Wallet extension not found! Please install it from https://casper.network/wallet');
+    const [signInModalOpen, setSignInModalOpen] = useState(false);
+
+    const connect = useCallback(async (): Promise<boolean> => {
+        if (!clickRef) {
+            console.error('[useWallet] cspr.click SDK not initialized');
             return false;
         }
+        setSignInModalOpen(true);
+        return true;
+    }, [clickRef]);
 
-        try {
-            const connected = await provider.requestConnection();
-            if (connected) {
-                const activeKey = await provider.getActivePublicKey();
-                setWalletState({
-                    isConnected: true,
-                    activeKey: activeKey,
-                    isLocked: false,
-                    balance: null // will trigger update in effect
-                });
-                await updateBalance(activeKey);
+    const disconnect = useCallback(async (): Promise<void> => {
+        if (!clickRef) return;
+        clickRef.signOut();
+    }, [clickRef]);
+
+    const switchAccount = useCallback(async (): Promise<void> => {
+        if (!clickRef) return;
+        const account = clickRef.getActiveAccount();
+        if (account?.provider) {
+            try {
+                await clickRef.switchAccount(account.provider);
+            } catch (e) {
+                console.error('[useWallet] switchAccount failed, falling back to modal:', e);
+                setSignInModalOpen(true);
             }
-            return connected;
-        } catch (e) {
-            console.error("Connection failed:", e);
-            return false;
+        } else {
+            setSignInModalOpen(true);
         }
-    };
+    }, [clickRef]);
 
-    const disconnect = async (): Promise<void> => {
-        const provider = getProvider();
-        if (provider) {
-            await provider.disconnectFromSite();
-            setWalletState({
-                isConnected: false,
-                activeKey: null,
-                isLocked: false,
-                balance: null
-            });
-        }
-    };
+    const signTransaction = useCallback(async (
+        transaction: Transaction | Deploy,
+        signingPublicKeyHex: string
+    ): Promise<Transaction | Deploy> => {
+        if (!clickRef) throw new Error("cspr.click SDK not initialized");
 
-    /**
-     * Sign a transaction using the Casper Wallet
-     * Supports both SDK v5 Transaction and Legacy Deploy
-     */
-    const signTransaction = async (transaction: Transaction | Deploy, signingPublicKeyHex: string): Promise<Transaction | Deploy> => {
-        const provider = getProvider();
-        if (!provider) throw new Error("Wallet not connected");
-
-        // Pause background requests during signing to prevent interference
         SigningLock.acquire();
         console.log('[useWallet] Signing started - pausing background requests');
 
         try {
-            let transactionJsonString: string;
+            let deployJson: any;
 
             if (transaction instanceof Transaction) {
-                const transactionJson = transaction.toJSON();
-                transactionJsonString = JSON.stringify(transactionJson);
+                deployJson = transaction.toJSON();
             } else {
-                // Legacy Deploy - use SDK's built-in toJSON method
-                const deployJson = Deploy.toJSON(transaction) as any;
+                deployJson = Deploy.toJSON(transaction) as any;
 
                 // HACK: Ensure version is null for StoredVersionedContractByHash if missing
-                // Wallet throws "arg not valid" if this field is missing
                 if (deployJson.session?.StoredVersionedContractByHash &&
                     deployJson.session.StoredVersionedContractByHash.version === undefined) {
                     console.log('[useWallet] Patching missing version in StoredVersionedContractByHash');
                     deployJson.session.StoredVersionedContractByHash.version = null;
                 }
-
-                transactionJsonString = JSON.stringify(deployJson);
             }
 
-            console.log("Requesting wallet signature...");
+            console.log("Requesting cspr.click signature...");
 
-            // @ts-ignore - The types might be slightly off for the provider
-            const signResult = await provider.sign(transactionJsonString, signingPublicKeyHex);
+            const signResult = await clickRef.sign(deployJson, signingPublicKeyHex);
 
             console.log("Sign result:", signResult);
+
+            if (!signResult) {
+                throw new Error("No sign result returned from cspr.click");
+            }
 
             if (signResult.cancelled) {
                 throw new Error("User cancelled the signing request");
             }
 
-            // Apply signature
-            if (signResult.signature) {
-                const publicKey = PublicKey.fromHex(signingPublicKeyHex);
-
-                // The signature needs to be prefixed with the key type byte
-                // Key type is the first byte of the public key hex: 01 = Ed25519, 02 = Secp256k1
-                const keyTypeByte = parseInt(signingPublicKeyHex.substring(0, 2), 16);
-                const prefixedSignature = new Uint8Array([keyTypeByte, ...signResult.signature]);
-                console.log('[signTransaction] Key type:', keyTypeByte, 'Signature length:', signResult.signature.length);
-
-                if (transaction instanceof Transaction) {
-                    transaction.setSignature(prefixedSignature, publicKey);
-                    return transaction;
-                } else {
-                    // Legacy Deploy signing - use Deploy.setSignature static method
-                    const signedDeploy = Deploy.setSignature(
-                        transaction,
-                        prefixedSignature,
-                        publicKey
-                    );
-                    return signedDeploy;
-                }
+            if (signResult.error) {
+                throw new Error(signResult.error);
             }
 
-            throw new Error("No signature returned from wallet");
+            // Extract signature — prefer Uint8Array, fall back to hex
+            const rawSignature = signResult.signature ||
+                (signResult.signatureHex
+                    ? Uint8Array.from(Buffer.from(signResult.signatureHex, 'hex'))
+                    : null);
 
+            if (!rawSignature) {
+                throw new Error("No signature returned from cspr.click");
+            }
+
+            const publicKey = PublicKey.fromHex(signingPublicKeyHex);
+
+            // cspr.click may return algo-tagged (65 bytes: prefix + 64 raw) or raw (64 bytes).
+            // Only add the key type prefix if the signature is raw (64 bytes).
+            const keyTypeByte = parseInt(signingPublicKeyHex.substring(0, 2), 16);
+            let prefixedSignature: Uint8Array;
+            if (rawSignature.length === 64) {
+                prefixedSignature = new Uint8Array([keyTypeByte, ...rawSignature]);
+            } else {
+                // Already algo-tagged (65 bytes) — use as-is
+                prefixedSignature = rawSignature;
+            }
+            console.log('[signTransaction] Key type:', keyTypeByte, 'Raw sig length:', rawSignature.length, 'Final sig length:', prefixedSignature.length);
+
+            if (transaction instanceof Transaction) {
+                transaction.setSignature(prefixedSignature, publicKey);
+                return transaction;
+            } else {
+                const signedDeploy = Deploy.setSignature(
+                    transaction,
+                    prefixedSignature,
+                    publicKey
+                );
+                return signedDeploy;
+            }
         } catch (e: any) {
             console.error("Signing failed:", e);
-            console.dir(e);
             throw new Error(`Signing failed: ${e.message || 'Unknown error'}`);
         } finally {
-            // Resume background requests after signing completes (success or failure)
             SigningLock.release();
             console.log('[useWallet] Signing finished - resuming background requests');
         }
-    };
+    }, [clickRef]);
+
+    const closeSignInModal = useCallback(() => {
+        setSignInModalOpen(false);
+    }, []);
 
     return {
         ...walletState,
         connect,
         disconnect,
-        signTransaction
+        switchAccount,
+        signTransaction,
+        signInModalOpen,
+        closeSignInModal,
     };
 };

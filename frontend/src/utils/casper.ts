@@ -53,6 +53,7 @@ const rpcCall = async (method: string, params: any) => {
     });
     const data = await response.json();
     if (data.error) {
+        console.error('[rpcCall] RPC error for method', method, ':', JSON.stringify(data.error));
         throw new Error(data.error.message);
     }
     return data.result;
@@ -174,14 +175,14 @@ const toLegacyCLValueJson = (clValue: CLValue | any): any => {
         };
     }
 
-    // Handle List
-    if (typeName === 'List') {
-        const listData = clValue.data || clValue.value() || [];
-        const innerType = clValue.type.inner.typeName;
+    // Handle List (typeName may be 'List', 'List<U8>', etc. in SDK v5)
+    if (typeName === 'List' || typeName?.startsWith('List') || clValue?.type?.inner) {
+        const listData = clValue.data || (typeof clValue.value === 'function' ? clValue.value() : []) || [];
+        const innerTypeName = clValue.type?.inner?.typeName || clValue.type?.elementType?.typeName || 'U8';
         return {
-            cl_type: { List: innerType },
+            cl_type: { List: innerTypeName },
             bytes: toHex(getBytes()),
-            parsed: listData.map((item: any) => toLegacyCLValueJson(item))
+            parsed: Array.isArray(listData) ? listData.map((item: any) => toLegacyCLValueJson(item)) : listData
         };
     }
 
@@ -203,10 +204,40 @@ const toLegacyCLValueJson = (clValue: CLValue | any): any => {
         };
     }
 
-    // Fallback: try toJSON if available
+    // Fallback: try toJSON if available (SDK v5 may use different casing)
     if (typeof clValue.toJSON === 'function') {
         const json = clValue.toJSON();
         if (json && json.cl_type) return json;
+        if (json && (json.CLType || json.clType)) {
+            return {
+                cl_type: json.CLType || json.clType,
+                bytes: json.Bytes || json.bytes || '',
+                parsed: json.Parsed || json.parsed || null
+            };
+        }
+    }
+
+    // Robust fallback: construct legacy format from bytes() and type.toString()
+    if (typeof clValue.bytes === 'function') {
+        const bytes = clValue.bytes();
+        if (bytes && bytes.length > 0) {
+            let clType: any = typeName || 'Any';
+            const typeStr = clValue.type?.toString?.();
+            if (typeStr) {
+                // Parse compound types: "List(U8)", "(List of U8)", etc. → { List: "U8" }
+                const listMatch = typeStr.match(/List\s*(?:\(|of\s+)(\w+)/i);
+                if (listMatch) {
+                    clType = { List: listMatch[1] };
+                } else if (typeStr !== '[object Object]') {
+                    clType = typeStr;
+                }
+            }
+            return {
+                cl_type: clType,
+                bytes: toHex(bytes),
+                parsed: null
+            };
+        }
     }
 
     return clValue?.toString ? clValue.toString() : null;
@@ -244,9 +275,13 @@ const executableDeployItemToJson = (item: ExecutableDeployItem | any): any => {
         item.storedVersionedContractByHash.args.args.forEach((val: any, key: any) => {
             argsMap.set(key, toLegacyCLValueJson(val));
         });
+        // ContractHash in SDK v5: try .hash, .data, then the object itself
+        const contractHash = item.storedVersionedContractByHash.hash;
+        let hashHex = toHex(contractHash?.hash || contractHash?.data || contractHash);
+        hashHex = hashHex.replace(/^hash-/, '');
         return {
             StoredVersionedContractByHash: {
-                hash: toHex(item.storedVersionedContractByHash.hash.data), // ContractHash has .data
+                hash: hashHex,
                 version: item.storedVersionedContractByHash.version,
                 entry_point: item.storedVersionedContractByHash.entryPoint,
                 args: Array.from(argsMap.entries())
@@ -969,12 +1004,14 @@ export const sendSignedTransaction = async (signedTransaction: Transaction | Dep
         const result = await rpcCall('account_put_transaction', { transaction: txJson });
         return result.transaction_hash?.toString() || result.transactionHash?.toString();
     } else {
-        const deployJson = Deploy.toJSON(signedTransaction) as any;
+        const deployJson = deployToLegacyJson(signedTransaction);
 
         if (deployJson.session?.StoredVersionedContractByHash &&
             deployJson.session.StoredVersionedContractByHash.version === undefined) {
             deployJson.session.StoredVersionedContractByHash.version = null;
         }
+
+        console.log('[sendSignedTransaction] deploy JSON:', JSON.stringify({ deploy: deployJson }, null, 2));
 
         const result = await rpcCall('account_put_deploy', { deploy: deployJson });
         return result.deploy_hash || result.deployHash;
