@@ -1,7 +1,8 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 
-type DataSource = 'cloud' | 'legacy';
-type DataSourceMode = 'hybrid' | 'cloud-only' | 'legacy-only';
+// cspr.cloud-only data proxy. The legacy explorer fallback was deprecated per
+// ROADMAP.md:16-19; see CHANGELOG entry "Deprecate Legacy Explorer Fallback".
+
 type ExplorerPathKind = 'transfers' | 'deploy';
 
 const NODE_RPC_URL =
@@ -10,19 +11,9 @@ const NODE_RPC_URL =
     'https://node.testnet.casper.network/rpc';
 const CSPR_CLOUD_REST_BASE_URL =
     process.env.CSPR_CLOUD_REST_BASE_URL || 'https://api.testnet.cspr.cloud';
-const LEGACY_EXPLORER_API_URL =
-    process.env.LEGACY_EXPLORER_API_URL ||
-    process.env.NEXT_PUBLIC_EXPLORER_API_URL ||
-    'https://api.testnet.cspr.live';
-const CSPR_DATA_SOURCE_MODE: DataSourceMode =
-    process.env.CSPR_DATA_SOURCE_MODE === 'cloud-only' ||
-    process.env.CSPR_DATA_SOURCE_MODE === 'legacy-only' ||
-    process.env.CSPR_DATA_SOURCE_MODE === 'hybrid'
-        ? process.env.CSPR_DATA_SOURCE_MODE
-        : 'hybrid';
 const CSPR_CLOUD_API_TOKEN = process.env.CSPR_CLOUD_API_TOKEN || '';
 
-const cache = new Map<string, { data: any; expiry: number; source: DataSource }>();
+const cache = new Map<string, { data: any; expiry: number }>();
 const CACHE_TTL_MS = 5_000;
 
 function getCloudAuthHeaderValue(): string {
@@ -35,20 +26,18 @@ function escapeRegExp(value: string): string {
     return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function sanitizeErrorText(source: DataSource, text: string | undefined): string {
+function sanitizeErrorText(text: string | undefined): string {
     if (!text) return 'request_failed';
     let safe = text;
 
-    if (source === 'cloud') {
-        if (CSPR_CLOUD_API_TOKEN) {
-            const rawToken = CSPR_CLOUD_API_TOKEN.trim().replace(/^bearer\s+/i, '');
-            if (rawToken) {
-                safe = safe.replace(new RegExp(escapeRegExp(rawToken), 'gi'), '[REDACTED]');
-            }
+    if (CSPR_CLOUD_API_TOKEN) {
+        const rawToken = CSPR_CLOUD_API_TOKEN.trim().replace(/^bearer\s+/i, '');
+        if (rawToken) {
+            safe = safe.replace(new RegExp(escapeRegExp(rawToken), 'gi'), '[REDACTED]');
         }
-        safe = safe.replace(/Bearer\s+[^\s"']+/gi, 'Bearer [REDACTED]');
-        safe = safe.replace(/Authorization:\s*[^\s"']+/gi, 'Authorization: [REDACTED]');
     }
+    safe = safe.replace(/Bearer\s+[^\s"']+/gi, 'Bearer [REDACTED]');
+    safe = safe.replace(/Authorization:\s*[^\s"']+/gi, 'Authorization: [REDACTED]');
 
     return safe.substring(0, 300);
 }
@@ -73,28 +62,20 @@ function classifyExplorerPath(path: string): ExplorerPathKind | null {
     return null;
 }
 
-function mapPathForSource(path: string, source: DataSource): string {
+function mapPathForCloud(path: string): string {
     const url = parseRelativeUrl(path);
     const pathname = url.pathname;
 
-    if (source === 'cloud' && /^\/purses\/[^/]+\/transfers$/i.test(pathname)) {
+    // cspr.cloud uses /purse-urefs/{uref}/transfers; rewrite legacy-style /purses/...
+    if (/^\/purses\/[^/]+\/transfers$/i.test(pathname)) {
         const purse = pathname.split('/')[2];
         url.pathname = `/purse-urefs/${purse}/transfers`;
     }
 
-    if (source === 'legacy' && /^\/purse-urefs\/[^/]+\/transfers$/i.test(pathname)) {
-        const purse = pathname.split('/')[2];
-        url.pathname = `/purses/${purse}/transfers`;
-    }
-
-    // Compatibility mapping across providers.
-    if (source === 'cloud' && url.searchParams.has('page_size') && !url.searchParams.has('limit')) {
+    // cspr.cloud accepts `limit` rather than `page_size`.
+    if (url.searchParams.has('page_size') && !url.searchParams.has('limit')) {
         url.searchParams.set('limit', url.searchParams.get('page_size') || '100');
         url.searchParams.delete('page_size');
-    }
-    if (source === 'legacy' && url.searchParams.has('limit') && !url.searchParams.has('page_size')) {
-        url.searchParams.set('page_size', url.searchParams.get('limit') || '100');
-        url.searchParams.delete('limit');
     }
 
     return `${url.pathname}${url.search}`;
@@ -198,40 +179,21 @@ function normalizeExplorerResponse(kind: ExplorerPathKind, payload: any): any {
     return payload;
 }
 
-function explorerSourcesByMode(mode: DataSourceMode): DataSource[] {
-    if (mode === 'legacy-only') return ['legacy'];
-    if (mode === 'cloud-only') return ['cloud'];
-    return ['cloud', 'legacy'];
+function buildCacheKey(method: string, path: string): string {
+    return `${method.toUpperCase()}:cloud:${path}`;
 }
 
-function baseUrlForSource(source: DataSource): string {
-    return source === 'cloud' ? CSPR_CLOUD_REST_BASE_URL : LEGACY_EXPLORER_API_URL;
-}
-
-function shouldUseFallback(mode: DataSourceMode, currentSource: DataSource): boolean {
-    return mode === 'hybrid' && currentSource === 'cloud';
-}
-
-function buildCacheKey(source: DataSource, method: string, path: string): string {
-    return `${method.toUpperCase()}:${source}:${path}`;
-}
-
-async function fetchExplorerFromSource(
-    source: DataSource,
+async function fetchCloud(
     path: string,
     method: string
 ): Promise<{ ok: boolean; status: number; data?: any; errorText?: string; latencyMs: number; targetUrl: string }> {
-    const mappedPath = mapPathForSource(path, source);
-    const targetUrl = `${baseUrlForSource(source)}${mappedPath}`;
+    const mappedPath = mapPathForCloud(path);
+    const targetUrl = `${CSPR_CLOUD_REST_BASE_URL}${mappedPath}`;
     const startedAt = Date.now();
 
-    const headers: Record<string, string> = {
-        Accept: 'application/json'
-    };
-    if (source === 'cloud') {
-        const auth = getCloudAuthHeaderValue();
-        if (auth) headers.Authorization = auth;
-    }
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    const auth = getCloudAuthHeaderValue();
+    if (auth) headers.Authorization = auth;
 
     try {
         const response = await fetch(targetUrl, { method, headers });
@@ -241,7 +203,7 @@ async function fetchExplorerFromSource(
             return {
                 ok: false,
                 status: response.status,
-                errorText: sanitizeErrorText(source, text),
+                errorText: sanitizeErrorText(text),
                 latencyMs: elapsed,
                 targetUrl
             };
@@ -259,11 +221,6 @@ async function fetchExplorerFromSource(
     }
 }
 
-function setSourceResponseHeaders(res: NextApiResponse, source: DataSource, fallbackUsed: boolean) {
-    res.setHeader('x-shroud-data-source', source);
-    res.setHeader('x-shroud-fallback-used', String(fallbackUsed));
-}
-
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
     const { useExplorer, path } = req.query;
 
@@ -271,6 +228,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if (useExplorer) {
             if (req.method !== 'GET') {
                 res.status(405).json({ error: 'Method Not Allowed', message: 'Explorer proxy supports GET only.' });
+                return;
+            }
+            if (!CSPR_CLOUD_API_TOKEN) {
+                res.status(500).json({
+                    error: 'Server Misconfiguration',
+                    details: 'CSPR_CLOUD_API_TOKEN is required (set in .env).'
+                });
                 return;
             }
 
@@ -286,98 +250,54 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 return;
             }
 
-            const sources = explorerSourcesByMode(CSPR_DATA_SOURCE_MODE);
-            let fallbackUsed = false;
-            const sourceErrors: Array<{ source: DataSource; status: number; details: string }> = [];
+            const mappedPath = mapPathForCloud(requestedPath);
+            const method = (req.method || 'GET').toUpperCase();
+            const cacheKey = buildCacheKey(method, mappedPath);
 
-            for (const source of sources) {
-                if (source === 'cloud' && !CSPR_CLOUD_API_TOKEN) {
-                    if (shouldUseFallback(CSPR_DATA_SOURCE_MODE, source)) {
-                        fallbackUsed = true;
-                        sourceErrors.push({ source, status: 0, details: 'CSPR_CLOUD_API_TOKEN is missing' });
-                        continue;
-                    }
-                    res.status(500).json({
-                        error: 'Server Misconfiguration',
-                        source,
-                        details: 'CSPR_CLOUD_API_TOKEN is required for cloud data source mode.'
-                    });
+            if (method === 'GET') {
+                const cached = cache.get(cacheKey);
+                if (cached && Date.now() < cached.expiry) {
+                    res.setHeader('x-shroud-data-source', 'cloud');
+                    res.setHeader('x-shroud-cache', 'hit');
+                    res.status(200).json(cached.data);
                     return;
                 }
+            }
 
-                const mappedPath = mapPathForSource(requestedPath, source);
-                const method = (req.method || 'GET').toUpperCase();
-                const cacheKey = buildCacheKey(source, method, mappedPath);
-
-                if (method === 'GET') {
-                    const cached = cache.get(cacheKey);
-                    if (cached && Date.now() < cached.expiry) {
-                        console.log(`[Proxy] CACHE HIT source=${cached.source} path=${mappedPath}`);
-                        setSourceResponseHeaders(res, cached.source, fallbackUsed);
-                        res.status(200).json(cached.data);
-                        return;
-                    }
-                }
-
-                const result = await fetchExplorerFromSource(source, requestedPath, method);
-                const isFallback = shouldUseFallback(CSPR_DATA_SOURCE_MODE, source);
-
-                if (!result.ok) {
-                    sourceErrors.push({
-                        source,
-                        status: result.status,
-                        details: result.errorText || 'request_failed'
-                    });
-
-                    console.warn(
-                        `[Proxy] source=${source} status=${result.status} latency=${result.latencyMs}ms path=${result.targetUrl}`
-                    );
-
-                    if (isFallback) {
-                        fallbackUsed = true;
-                        continue;
-                    }
-
-                    res.status(result.status || 502).json({
-                        error: 'Target error',
-                        source,
-                        status: result.status || 502,
-                        details: result.errorText || 'request_failed'
-                    });
-                    return;
-                }
-
-                const normalized = normalizeExplorerResponse(kind, result.data);
-                if (method === 'GET') {
-                    cache.set(cacheKey, {
-                        data: normalized,
-                        expiry: Date.now() + CACHE_TTL_MS,
-                        source
-                    });
-                }
-
-                console.log(
-                    `[Proxy] source=${source} fallback=${fallbackUsed} status=${result.status} latency=${result.latencyMs}ms path=${result.targetUrl}`
+            const result = await fetchCloud(requestedPath, method);
+            if (!result.ok) {
+                console.warn(
+                    `[Proxy] cloud status=${result.status} latency=${result.latencyMs}ms path=${result.targetUrl}`
                 );
-
-                setSourceResponseHeaders(res, source, fallbackUsed);
-                res.status(200).json(normalized);
+                res.status(result.status || 502).json({
+                    error: 'Cloud target error',
+                    status: result.status || 502,
+                    details: result.errorText || 'request_failed'
+                });
                 return;
             }
 
-            res.status(502).json({
-                error: 'Explorer upstream unavailable',
-                source: CSPR_DATA_SOURCE_MODE,
-                details: sourceErrors
-            });
+            const normalized = normalizeExplorerResponse(kind, result.data);
+            if (method === 'GET') {
+                cache.set(cacheKey, {
+                    data: normalized,
+                    expiry: Date.now() + CACHE_TTL_MS
+                });
+            }
+
+            console.log(
+                `[Proxy] cloud status=${result.status} latency=${result.latencyMs}ms path=${result.targetUrl}`
+            );
+
+            res.setHeader('x-shroud-data-source', 'cloud');
+            res.status(200).json(normalized);
             return;
         }
 
+        // RPC pass-through (POST → casper node)
         const fetchOptions: any = {
             method: req.method,
-            headers: {
-                Accept: 'application/json'
-            }
+            headers: { Accept: 'application/json' }
         };
 
         if (req.method !== 'GET' && req.method !== 'HEAD') {

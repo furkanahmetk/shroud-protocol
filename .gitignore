@@ -57,6 +57,7 @@ casper_keys/
 
 # Local Dev Extras - Sensitive files (NEVER commit)
 contracts/casper_livenet.env
+contracts/deploy_keys/
 cli/cli_test_secret.json
 cli/*.secret.json
 cli/.commitments_*.json
@@ -67,3 +68,10 @@ cli/test_sync.js
 cli/test_withdraw*.js
 cli/test_zk*.js
 cli/fetch_abort.js
+
+# Local test runs (contain real testnet secrets!)
+test_run/
+
+# Misc local-only files
+trade-tracker.html
+**/tsconfig.tsbuildinfo

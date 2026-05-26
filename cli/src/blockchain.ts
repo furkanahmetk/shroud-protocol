@@ -89,6 +89,8 @@ export class BlockchainClient {
         root: bigint,
         nullifierHash: bigint,
         recipient: string,
+        relayer: string,
+        fee: bigint,
         senderKeyPath: string
     ): Promise<string> {
         let keyPair;
@@ -98,12 +100,15 @@ export class BlockchainClient {
             keyPair = Keys.Secp256K1.loadKeyPairFromPrivateFile(senderKeyPath);
         }
         const recipientKey = CLPublicKey.fromHex(recipient);
+        const relayerKey = CLPublicKey.fromHex(relayer);
 
         const args = RuntimeArgs.fromMap({
             proof: CLValueBuilder.list(Array.from(proof).map(b => CLValueBuilder.u8(b))),
             root: CLValueBuilder.u256(root.toString()),
             nullifier_hash: CLValueBuilder.u256(nullifierHash.toString()),
             recipient: CLValueBuilder.key(recipientKey),
+            relayer: CLValueBuilder.key(relayerKey),
+            fee: CLValueBuilder.u512(fee.toString()),
         });
 
         const deploy = DeployUtil.makeDeploy(
@@ -126,6 +131,118 @@ export class BlockchainClient {
         const deployHash = await this.client.putDeploy(signedDeploy);
 
         return deployHash;
+    }
+
+    /**
+     * Batch deposit: N commitments in a single transaction.
+     * `amount` MUST equal `N * DENOMINATION`. Atomic — any duplicate reverts all.
+     */
+    async depositBatch(
+        commitments: bigint[],
+        amount: bigint,
+        senderKeyPath: string,
+        sessionWasmPath: string
+    ): Promise<string> {
+        if (!fs.existsSync(sessionWasmPath)) {
+            throw new Error(`deposit_session_batch.wasm not found at ${sessionWasmPath}`);
+        }
+        let keyPair;
+        try {
+            keyPair = Keys.Ed25519.loadKeyPairFromPrivateFile(senderKeyPath);
+        } catch (e) {
+            keyPair = Keys.Secp256K1.loadKeyPairFromPrivateFile(senderKeyPath);
+        }
+
+        const sessionWasm = new Uint8Array(fs.readFileSync(sessionWasmPath));
+        const commitmentClvs = commitments.map(c => CLValueBuilder.u256(c.toString()));
+
+        const args = RuntimeArgs.fromMap({
+            contract_package_hash: CLValueBuilder.byteArray(Buffer.from(this.contractHash, 'hex')),
+            commitments: CLValueBuilder.list(commitmentClvs),
+            amount: CLValueBuilder.u512(amount.toString()),
+        });
+
+        const deploy = DeployUtil.makeDeploy(
+            new DeployUtil.DeployParams(keyPair.publicKey, NETWORK_NAME, 1, 1800000),
+            DeployUtil.ExecutableDeployItem.newModuleBytes(sessionWasm, args),
+            DeployUtil.standardPayment((amount + DEFAULT_DEPOSIT_PAYMENT_BUFFER_MOTES).toString())
+        );
+
+        const signedDeploy = deploy.sign([keyPair]);
+        return await this.client.putDeploy(signedDeploy);
+    }
+
+    /**
+     * Batch withdraw: N independent withdrawals in a single tx.
+     * Each tuple is verified independently; any invalid proof reverts all.
+     */
+    async withdrawBatch(
+        proofs: Uint8Array[],
+        roots: bigint[],
+        nullifierHashes: bigint[],
+        recipients: string[],
+        relayers: string[],
+        fees: bigint[],
+        senderKeyPath: string
+    ): Promise<string> {
+        const n = proofs.length;
+        if (
+            roots.length !== n
+            || nullifierHashes.length !== n
+            || recipients.length !== n
+            || relayers.length !== n
+            || fees.length !== n
+        ) {
+            throw new Error('withdrawBatch: all input arrays must have the same length');
+        }
+
+        let keyPair;
+        try {
+            keyPair = Keys.Ed25519.loadKeyPairFromPrivateFile(senderKeyPath);
+        } catch (e) {
+            keyPair = Keys.Secp256K1.loadKeyPairFromPrivateFile(senderKeyPath);
+        }
+
+        const proofsClv = CLValueBuilder.list(
+            proofs.map(p => CLValueBuilder.list(Array.from(p).map(b => CLValueBuilder.u8(b))))
+        );
+        const rootsClv = CLValueBuilder.list(roots.map(r => CLValueBuilder.u256(r.toString())));
+        const nullifiersClv = CLValueBuilder.list(
+            nullifierHashes.map(n => CLValueBuilder.u256(n.toString()))
+        );
+        const recipientsClv = CLValueBuilder.list(
+            recipients.map(r => CLValueBuilder.key(CLPublicKey.fromHex(r)))
+        );
+        const relayersClv = CLValueBuilder.list(
+            relayers.map(r => CLValueBuilder.key(CLPublicKey.fromHex(r)))
+        );
+        const feesClv = CLValueBuilder.list(fees.map(f => CLValueBuilder.u512(f.toString())));
+
+        const args = RuntimeArgs.fromMap({
+            proofs: proofsClv,
+            roots: rootsClv,
+            nullifier_hashes: nullifiersClv,
+            recipients: recipientsClv,
+            relayers: relayersClv,
+            fees: feesClv,
+        });
+
+        // Scale payment with N — verifier cost dominates and is linear in batch size.
+        const payment = DEFAULT_WITHDRAW_PAYMENT_MOTES * BigInt(n);
+
+        const deploy = DeployUtil.makeDeploy(
+            new DeployUtil.DeployParams(keyPair.publicKey, NETWORK_NAME, 1, 1800000),
+            DeployUtil.ExecutableDeployItem.newStoredVersionContractByHash(
+                Uint8Array.from(Buffer.from(this.contractHash, 'hex')),
+                null,
+                'withdraw_batch',
+                args
+            ),
+            DeployUtil.standardPayment(payment.toString())
+        );
+
+        const signedDeploy = deploy.sign([keyPair]);
+        return await this.client.putDeploy(signedDeploy);
     }
 
     private async rpcCall(method: string, params: any): Promise<any> {
@@ -177,7 +294,7 @@ export class BlockchainClient {
     }
 
     async getMainPurse(): Promise<string> {
-        let mainPurse = 'uref-3c4011cbd1c0d58793d9435fab15abb24faee31e3546d2e81c011cce6ed73047-007';
+        let mainPurse = 'uref-a4a21274a56589f679b7a86c69c74081e31249a002c7891651bbe42e2685a4cf-007';
         try {
             const stateRootRes = await this.rpcCall('chain_get_state_root_hash', []);
             const stateRootHash = stateRootRes.state_root_hash;
@@ -244,10 +361,22 @@ export class BlockchainClient {
 
                     const args = data?.args || data?.session?.args || data?.session?.StoredContractByHash?.args;
                     if (args) {
+                        // Single deposit: scalar `commitment`
                         const commitmentValue = args.commitment?.parsed ||
                             (Array.isArray(args) ? args.find((a: any) => a.name === 'commitment' || a[0] === 'commitment')?.parsed : null);
                         if (commitmentValue) {
                             commitments.push(BigInt(commitmentValue.toString()));
+                        }
+
+                        // Batch deposit: List<U256> `commitments` (plural)
+                        const batchCommitments = args.commitments?.parsed ||
+                            (Array.isArray(args) ? args.find((a: any) => a.name === 'commitments' || a[0] === 'commitments')?.parsed : null);
+                        if (Array.isArray(batchCommitments)) {
+                            for (const c of batchCommitments) {
+                                if (c !== undefined && c !== null) {
+                                    commitments.push(BigInt(c.toString()));
+                                }
+                            }
                         }
                     }
                 } catch (e) { }

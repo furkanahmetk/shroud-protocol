@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ArrowUpCircle, Download, Upload, X } from 'lucide-react';
 import { CryptoUtils } from '../utils/crypto';
 import { createWithdrawTransaction, sendSignedTransaction, CONTRACT_HASH } from '../utils/casper';
+import { snarkjsProofToBytes } from '../utils/proofCodec';
 import { useWallet } from '../hooks/useWallet';
 import { useCommitment } from '../context/CommitmentContext';
 import { SyncProgressTracker } from '../utils/syncProgress';
@@ -150,6 +151,12 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
                 throw new Error(`Invalid recipient public key: ${err.message}. Please enter a valid Casper Public Key.`);
             }
 
+            // Self-withdrawal (no relayer): relayer field is set to the recipient
+            // so the prover commits to it in the proof. Fee = 0 means user pays
+            // their own gas. Protocol fee (25 bps) is deducted on-chain.
+            const relayerBigInt = recipientBigInt;
+            const feeBigInt = 0n;
+
             const input = {
                 nullifier: nullifier,
                 secret: secret,
@@ -158,8 +165,8 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
                 root: computedRoot,
                 nullifierHash: crypto.computeNullifierHash(nullifier),
                 recipient: recipientBigInt,
-                relayer: 0n,
-                fee: 0n
+                relayer: relayerBigInt,
+                fee: feeBigInt
             };
 
             // Generate ZK proof
@@ -171,16 +178,17 @@ export default function Withdraw({ isConnected, activeKey }: WithdrawProps) {
 
             setStatus('withdrawing');
 
-            // 8. Create Transaction (SDK v5)
-            const proofJson = JSON.stringify(proof);
-            const proofBytes = new TextEncoder().encode(proofJson);
+            // 8. Encode proof as compact 256-byte binary and build the tx
+            const proofBytes = snarkjsProofToBytes(proof);
 
             const transaction = createWithdrawTransaction(
                 activeKey,
                 proofBytes,
                 computedRoot,
                 BigInt(publicSignals[1]), // nullifier_hash from signals
-                recipient
+                recipient,
+                recipient,                 // relayer = recipient (self-withdrawal)
+                feeBigInt                  // fee = 0
             );
 
             // 9. Sign & Send

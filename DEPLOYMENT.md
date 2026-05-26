@@ -80,18 +80,14 @@ vercel env add CSPR_CLOUD_API_TOKEN preview
 vercel env add CSPR_CLOUD_API_TOKEN development
 
 vercel env add CSPR_CLOUD_REST_BASE_URL production
-vercel env add LEGACY_EXPLORER_API_URL production
 vercel env add CASPER_NODE_RPC_URL production
-vercel env add CSPR_DATA_SOURCE_MODE production
 ```
 
 Recommended values (testnet):
 
 ```env
 CSPR_CLOUD_REST_BASE_URL=https://api.testnet.cspr.cloud
-LEGACY_EXPLORER_API_URL=https://api.testnet.cspr.live
 CASPER_NODE_RPC_URL=https://node.testnet.casper.network/rpc
-CSPR_DATA_SOURCE_MODE=hybrid
 ```
 
 ### Option B: Local Development

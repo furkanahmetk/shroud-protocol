@@ -1,1 +1,1 @@
-Contract(ContractPackageHash(eab05369d5f955239217e3bf2d11d15b996bbb14c7138812591eb2347dfeba4b))
+Contract(ContractPackageHash(0585ceff379fa73cf371b0ec868a866b11f3301e5a2eceee3085763b0e7c1400))

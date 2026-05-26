@@ -31,6 +31,7 @@ odra-casper-wasm-env = "2.5.0"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 odra-casper-livenet-env = "2.5.0"
+env_logger = "0.11"
 
 [[bin]]
 name = "deploy"
@@ -49,6 +50,11 @@ codegen-units = 1
 [[bin]]
 name = "deposit_session"
 path = "src/deposit_session.rs"
+test = false
+
+[[bin]]
+name = "deposit_session_batch"
+path = "src/deposit_session_batch.rs"
 test = false
 
 [dependencies.casper-contract]

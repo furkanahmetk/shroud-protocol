@@ -31,7 +31,7 @@ import { RequestQueue, QueueTask, QueueProgress } from './requestQueue';
 import { SyncProgress } from './syncProgress';
 
 const DEFAULT_DEPOSIT_PAYMENT_MOTES = 150_000_000_000n;
-const DEFAULT_WITHDRAW_PAYMENT_MOTES = 100_000_000_000n;
+const DEFAULT_WITHDRAW_PAYMENT_MOTES = 300_000_000_000n;
 
 // Use proxy to avoid CORS in browser
 const NODE_URL = typeof window !== 'undefined' ? '/api/proxy' : 'https://node.testnet.casper.network/rpc';
@@ -331,7 +331,7 @@ const explorerCall = async (path: string) => {
 // Helper to get the main purse of the contract
 const getMainPurse = async (contractHash: string): Promise<string> => {
     // Default fallback
-    let mainPurse = 'uref-3c4011cbd1c0d58793d9435fab15abb24faee31e3546d2e81c011cce6ed73047-007';
+    let mainPurse = 'uref-a4a21274a56589f679b7a86c69c74081e31249a002c7891651bbe42e2685a4cf-007';
 
     try {
         const stateRootRes = await rpcCall('chain_get_state_root_hash', []);
@@ -872,7 +872,7 @@ export const fetchContractEvents = async (contractHash: string): Promise<string[
 };
 
 const NETWORK_NAME = process.env.NEXT_PUBLIC_NETWORK_NAME || 'casper-test';
-export const CONTRACT_HASH = process.env.NEXT_PUBLIC_CONTRACT_HASH || 'eab05369d5f955239217e3bf2d11d15b996bbb14c7138812591eb2347dfeba4b';
+export const CONTRACT_HASH = process.env.NEXT_PUBLIC_CONTRACT_HASH || '0585ceff379fa73cf371b0ec868a866b11f3301e5a2eceee3085763b0e7c1400';
 
 // Get contract hash without 'hash-' prefix
 export const getContractHash = (): string => {
@@ -933,17 +933,25 @@ export const createDepositTransaction = (
 };
 
 /**
- * Create a withdraw transaction using SDK v5 ContractCallBuilder
+ * Create a withdraw transaction using SDK v5 ContractCallBuilder.
+ *
+ * `relayer` and `fee` are part of the ZK proof's public inputs (anti-tampering).
+ * Pass `relayer = recipient` and `fee = 0n` for self-withdrawal — keeps the
+ * verifier happy without paying a third-party relayer. Protocol fee (25 bps)
+ * is deducted on-chain automatically and routed to the treasury.
  */
 export const createWithdrawTransaction = (
     activeKey: string,
     proof: Uint8Array,
     root: bigint,
     nullifierHash: bigint,
-    recipient: string
+    recipient: string,
+    relayer: string,
+    fee: bigint
 ): Deploy => {
     const senderKey = PublicKey.fromHex(activeKey);
     const recipientKey = PublicKey.fromHex(recipient);
+    const relayerKey = PublicKey.fromHex(relayer);
 
     // Create List<U8> for proof
     const proofList = Array.from(proof).map(b => CLValue.newCLUint8(b));
@@ -953,6 +961,8 @@ export const createWithdrawTransaction = (
         root: CLValue.newCLUInt256(root.toString()),
         nullifier_hash: CLValue.newCLUInt256(nullifierHash.toString()),
         recipient: CLValue.newCLKey(Key.createByType(recipientKey.accountHash().toHex(), KeyTypeID.Account)),
+        relayer: CLValue.newCLKey(Key.createByType(relayerKey.accountHash().toHex(), KeyTypeID.Account)),
+        fee: CLValue.newCLUInt512(fee.toString()),
     });
 
     const deployParams = new DeployHeader();

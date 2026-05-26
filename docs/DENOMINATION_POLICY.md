@@ -24,9 +24,16 @@ This policy operationalizes roadmap + whitepaper guidance for fixed-denomination
 
 ## Weekly Decision Rules
 
+- If the rolling window holds fewer than `min_window_deposits` (default `14`):
+  `INSUFFICIENT_DATA` — KPIs reported but no KEEP/REVIEW/FREEZE verdict
+  emitted, and `underperforming_weeks` is held in place so the 3-week
+  REVIEW_50 rule cannot fire on warmup noise.
 - If at least 2/3 gate groups pass: `KEEP_100`
 - If fewer than 2/3 pass for 3 consecutive weeks: `REVIEW_50`
 - During Open Beta, if at least 2/3 pass for 4 consecutive weeks: `FREEZE_FOR_MAINNET`
+
+`min_window_deposits` is configurable on the CLI via `--min-samples`. Set it
+to `0` to disable the warmup gate (useful for ceremony testing).
 
 ## REVIEW_50 Canary Rule (Testnet, 14 days)
 

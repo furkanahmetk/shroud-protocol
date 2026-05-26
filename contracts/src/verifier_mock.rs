@@ -3,7 +3,7 @@
 //! WARNING: This verifier always returns `true` and should ONLY be used for testing.
 //! Replace with the real verifier for production deployment.
 
-use casper_types::U256;
+use casper_types::{U256, U512};
 use odra::prelude::*;
 
 pub struct Verifier;
@@ -17,6 +17,8 @@ impl Verifier {
         _root: U256,
         _nullifier_hash: U256,
         _recipient: Address,
+        _relayer: Address,
+        _fee: U512,
     ) -> bool {
         // MOCK: Accept all proofs for testing
         true

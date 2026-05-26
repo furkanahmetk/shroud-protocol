@@ -1,5 +1,6 @@
 import { CryptoUtils } from './crypto';
 import { BlockchainClient } from './blockchain';
+import { snarkjsProofToBytes } from './proof_codec';
 const snarkjs = require('snarkjs');
 
 export async function withdrawCommand(
@@ -9,8 +10,14 @@ export async function withdrawCommand(
     secretsFile: string,
     circuitWasmPath: string,
     provingKeyPath: string,
-    senderKeyPath: string
+    senderKeyPath: string,
+    relayerAddress?: string,
+    feeMotes?: bigint
 ) {
+    // Default: self-withdrawal (relayer = recipient, fee = 0).
+    // Protocol fee (25 bps) is deducted on-chain regardless.
+    const relayer = relayerAddress ?? recipientAddress;
+    const fee = feeMotes ?? 0n;
     console.log('🔓 Loading secrets...');
     const crypto = new CryptoUtils();
     await crypto.init();
@@ -69,17 +76,20 @@ export async function withdrawCommand(
     console.log(`   Leaf index: ${actualIndex}`);
     console.log(`   Root: ${root.toString(16).substring(0, 16)}...`);
 
-    // Deriving recipient numeric input for circuit (Account Hash)
-    let recipientNumeric: bigint;
-    try {
+    // Deriving recipient + relayer numeric inputs for circuit (Account Hash)
+    const addressToNumeric = (addr: string): bigint => {
+        // casper-js-sdk v2 exposes the account hash via `toAccountHash()` (NOT
+        // `accountHash()` — that name belongs to v5). Hitting the catch path
+        // here silently substituted the raw public key, which caused the
+        // generated proof's recipient/relayer to mismatch the contract's
+        // address_to_fr value and every withdrawal reverted with InvalidProof.
         const { CLPublicKey } = require('casper-js-sdk');
-        const pubKey = CLPublicKey.fromHex(recipientAddress);
-        const hash = pubKey.accountHash();
-        recipientNumeric = BigInt('0x' + Buffer.from(hash).toString('hex'));
-    } catch (e) {
-        // Fallback for hex strings
-        recipientNumeric = BigInt(recipientAddress.startsWith('0x') ? recipientAddress : '0x' + recipientAddress);
-    }
+        const pubKey = CLPublicKey.fromHex(addr);
+        const hash: Uint8Array = pubKey.toAccountHash();
+        return BigInt('0x' + Buffer.from(hash).toString('hex'));
+    };
+    const recipientNumeric = addressToNumeric(recipientAddress);
+    const relayerNumeric = addressToNumeric(relayer);
 
     console.log('⚡ Generating Zero-Knowledge Proof...');
     const input = {
@@ -90,8 +100,8 @@ export async function withdrawCommand(
         root: root,
         nullifierHash: crypto.computeNullifierHash(nullifier),
         recipient: recipientNumeric,
-        relayer: 0n,
-        fee: 0n
+        relayer: relayerNumeric,
+        fee: fee
     };
 
     const { proof, publicSignals } = await snarkjs.groth16.fullProve(
@@ -100,8 +110,8 @@ export async function withdrawCommand(
         provingKeyPath
     );
 
-    // Format proof for contract
-    const proofBytes = new Uint8Array(Buffer.from(JSON.stringify(proof)));
+    // Format proof for contract (compact 256-byte binary; see proof_codec.ts)
+    const proofBytes = snarkjsProofToBytes(proof);
 
     console.log('\n💸 Submitting withdrawal transaction...');
 
@@ -110,6 +120,8 @@ export async function withdrawCommand(
         root,
         crypto.computeNullifierHash(nullifier),
         recipientAddress,
+        relayer,
+        fee,
         senderKeyPath
     );
 

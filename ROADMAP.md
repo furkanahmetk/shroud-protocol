@@ -2,6 +2,12 @@
 
 This document outlines the strategic phases and technical milestones for bringing Shroud Protocol from its current proof-of-concept phase to a fully audited, production-ready release on the Casper Mainnet.
 
+**Operational playbooks** (drafted Phase 1, executed in Phase 2-3):
+- [`docs/BETA_LAUNCH.md`](docs/BETA_LAUNCH.md) — public testnet beta checklist
+- [`docs/BUG_BOUNTY.md`](docs/BUG_BOUNTY.md) — mini bounty program scope & payouts
+- [`docs/AUDIT_RFP.md`](docs/AUDIT_RFP.md) — auditor shortlist + outreach RFP
+- [`docs/MPC_CEREMONY.md`](docs/MPC_CEREMONY.md) — MPC trusted setup plan
+
 ---
 
 ## Phase 1: Core Protocol Enhancements & Integrations (Q1/Q2)

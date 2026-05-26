@@ -93,8 +93,30 @@ We provide a script to install all necessary dependencies (Rust, Odra, Casper Cl
 | **SnarkJS** | v0.7.0+ | ZK Proof generation and verification |
 
 ### Latest Deployment (Casper Testnet)
-- **Contract Package Hash**: `contract-package-eab05369d5f955239217e3bf2d11d15b996bbb14c7138812591eb2347dfeba4b`
-- **Contract Hash**: `hash-eab05369d5f955239217e3bf2d11d15b996bbb14c7138812591eb2347dfeba4b`
+- **Contract Package Hash**: `contract-package-0585ceff379fa73cf371b0ec868a866b11f3301e5a2eceee3085763b0e7c1400`
+- **Deploy tx**: [87b9ab2…](https://testnet.cspr.live/transaction/87b9ab2fcb9d613d3fc65119ca7e4fb130a16ff014faa9091e66250c5165bb8d)
+- **Features**: commission fee (25 bps → treasury), batch deposit/withdraw (≤ 10),
+  cloud-only data source, compact binary proof encoding, **real Groth16
+  verifier** (no longer the mock). End-to-end verified on testnet for both
+  single (`fb0ecfd2…`) and batch N=2 (`70a27770…`) withdrawals. See
+  `CHANGELOG.md` Unreleased for the diff.
+
+Previous deployments (kept for reference):
+- `c099aa…` — Phase 1 features w/ mock verifier
+- `eab05369…` — pre-Phase-1 baseline
+
+### Operational Playbooks (Phase 2-3)
+
+Phase 1 engineering is feature-complete. The next milestones are operational
+and have executable plans in `docs/`:
+
+- [`docs/BETA_LAUNCH.md`](docs/BETA_LAUNCH.md) — public testnet beta gating + exit criteria (task #9)
+- [`docs/BUG_BOUNTY.md`](docs/BUG_BOUNTY.md) — scope, payouts, platform (task #10)
+- [`docs/AUDIT_RFP.md`](docs/AUDIT_RFP.md) — vendor shortlist + RFP template (task #12)
+- [`docs/MPC_CEREMONY.md`](docs/MPC_CEREMONY.md) — MPC trusted setup ceremony plan (task #14)
+
+Audit and MPC have the longest external lead times — RFP outreach and
+contributor recruitment can start in parallel with the beta.
 
 ### 🚀 Quick Start (Automated)
 
@@ -122,13 +144,13 @@ The protocol uses a fixed denomination. Defaults are `100 CSPR`.
 
 ### Casper Cloud Config (Frontend Proxy)
 
-Explorer and indexing calls run through `frontend/src/pages/api/proxy.ts` with Casper Cloud as primary source.
+Explorer and indexing calls run through `frontend/src/pages/api/proxy.ts` against
+**Casper Cloud only** — the legacy explorer fallback was removed in Phase 1 of
+the mainnet roadmap. A `CSPR_CLOUD_API_TOKEN` is therefore **required**.
 
 - `CASPER_NODE_RPC_URL=https://node.testnet.casper.network/rpc`
 - `CSPR_CLOUD_API_TOKEN=...` (server-side only, raw key without `Bearer ` prefix)
 - `CSPR_CLOUD_REST_BASE_URL=https://api.testnet.cspr.cloud`
-- `LEGACY_EXPLORER_API_URL=https://api.testnet.cspr.live`
-- `CSPR_DATA_SOURCE_MODE=hybrid` (`hybrid | cloud-only | legacy-only`)
 
 ### 🛠️ Manual Installation
 

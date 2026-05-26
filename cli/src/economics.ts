@@ -6,7 +6,14 @@ const EXPLORER_API_URL = process.env.CASPER_EXPLORER_API_URL || 'https://api.tes
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type ProtocolTxType = 'deposit' | 'withdrawal';
-export type DecisionState = 'KEEP_100' | 'REVIEW_50' | 'FREEZE_FOR_MAINNET';
+export type DecisionState = 'INSUFFICIENT_DATA' | 'KEEP_100' | 'REVIEW_50' | 'FREEZE_FOR_MAINNET';
+
+// Below this many window-deposits, the KPI gates are statistically meaningless
+// (e.g. the first 14 days of beta will trivially fail every threshold even when
+// adoption trajectory is healthy). In that regime we report metrics but suppress
+// the KEEP/REVIEW/FREEZE judgement so the 3-underperforming-weeks rule doesn't
+// fire on warmup noise.
+export const DEFAULT_MIN_WINDOW_DEPOSITS = 14;
 
 interface ProtocolTransaction {
     hash: string;
@@ -15,6 +22,13 @@ interface ProtocolTransaction {
     blockHeight: number;
     callerPublicKey: string | null;
     costCspr: number;
+    /**
+     * Number of commitments (deposit) or nullifiers (withdrawal) carried by
+     * this transaction. 1 for the scalar entry points; N for the batch
+     * entry points. Used so that pool depth and deposit-rate metrics reflect
+     * actual leaves, not just unique deploys.
+     */
+    leafCount: number;
 }
 
 export interface KpiEvaluation {
@@ -83,6 +97,7 @@ interface BuildOptions {
     windowDays?: number;
     denominationCspr?: number;
     openBeta?: boolean;
+    minWindowDeposits?: number;
 }
 
 interface DepositTransfer {
@@ -116,6 +131,18 @@ function median(values: number[]): number {
         return (sorted[mid - 1] + sorted[mid]) / 2;
     }
     return sorted[mid];
+}
+
+function parseListLength(args: any, key: string): number {
+    if (!args) return 0;
+    const raw =
+        args[key]?.parsed ??
+        (Array.isArray(args)
+            ? (args.find((e: any) => Array.isArray(e) && e[0] === key)?.[1]?.parsed
+                ?? args.find((e: any) => e?.name === key)?.parsed)
+            : undefined);
+    if (Array.isArray(raw)) return raw.length;
+    return 0;
 }
 
 function parseArgValue(args: any, key: string): string | null {
@@ -257,17 +284,31 @@ export async function fetchProtocolTransactions(
 
             const args = extractArgs(data);
             const hasCommitment = !!parseArgValue(args, 'commitment');
+            // Batch deposits carry `commitments` (plural, List<U256>) and
+            // batch withdrawals carry `nullifier_hashes`. Without this,
+            // batch txns weren't counted toward window_deposits / depth.
+            const batchCommitmentsLen = parseListLength(args, 'commitments');
+            const batchNullifiersLen = parseListLength(args, 'nullifier_hashes');
             const hasNullifier = !!parseArgValue(args, 'nullifier_hash');
             const entryPoint =
                 data?.entry_point ||
                 data?.session?.StoredVersionedContractByHash?.entry_point ||
                 data?.session?.StoredContractByHash?.entry_point;
-            const isWithdrawal = hasNullifier || entryPoint === 'withdraw';
+            const isBatchDeposit = entryPoint === 'deposit_batch' || batchCommitmentsLen > 0;
+            const isBatchWithdraw = entryPoint === 'withdraw_batch' || batchNullifiersLen > 0;
+            const isSingleWithdraw = hasNullifier || entryPoint === 'withdraw';
 
             let type: ProtocolTxType | null = null;
+            let leafCount = 1;
             if (hasCommitment) {
                 type = 'deposit';
-            } else if (isWithdrawal) {
+            } else if (isBatchDeposit) {
+                type = 'deposit';
+                leafCount = Math.max(1, batchCommitmentsLen);
+            } else if (isBatchWithdraw) {
+                type = 'withdrawal';
+                leafCount = Math.max(1, batchNullifiersLen);
+            } else if (isSingleWithdraw) {
                 type = 'withdrawal';
             }
 
@@ -276,6 +317,7 @@ export async function fetchProtocolTransactions(
             return {
                 hash,
                 type,
+                leafCount,
                 timestamp: data.timestamp,
                 blockHeight: hashToHeight.get(hash) ?? 0,
                 callerPublicKey: data?.caller_public_key ? String(data.caller_public_key) : null,
@@ -304,22 +346,29 @@ export function computeMetrics(
     const windowStartTs = nowTs - (windowDays * DAY_MS);
     const sevenDayStartTs = nowTs - (7 * DAY_MS);
 
-    const totalDeposits = transactions.filter((tx) => tx.type === 'deposit').length;
-    const totalWithdrawals = transactions.filter((tx) => tx.type === 'withdrawal').length;
+    const sumLeaves = (txs: ProtocolTransaction[]) =>
+        txs.reduce((acc, tx) => acc + (tx.leafCount ?? 1), 0);
+
+    const totalDeposits = sumLeaves(transactions.filter((tx) => tx.type === 'deposit'));
+    const totalWithdrawals = sumLeaves(transactions.filter((tx) => tx.type === 'withdrawal'));
 
     const windowTransactions = transactions.filter((tx) => new Date(tx.timestamp).getTime() >= windowStartTs);
-    const windowDeposits = windowTransactions.filter((tx) => tx.type === 'deposit');
-    const windowWithdrawals = windowTransactions.filter((tx) => tx.type === 'withdrawal');
+    const windowDepositTxs = windowTransactions.filter((tx) => tx.type === 'deposit');
+    const windowWithdrawalTxs = windowTransactions.filter((tx) => tx.type === 'withdrawal');
+    const windowDeposits = sumLeaves(windowDepositTxs);
+    const windowWithdrawals = sumLeaves(windowWithdrawalTxs);
 
     const uniqueDepositorSet = new Set(
-        windowDeposits
+        windowDepositTxs
             .map((tx) => tx.callerPublicKey)
             .filter((key): key is string => !!key)
     );
 
-    const deposits7d = transactions.filter((tx) =>
-        tx.type === 'deposit' && new Date(tx.timestamp).getTime() >= sevenDayStartTs
-    ).length;
+    const deposits7d = sumLeaves(
+        transactions.filter((tx) =>
+            tx.type === 'deposit' && new Date(tx.timestamp).getTime() >= sevenDayStartTs
+        )
+    );
 
     let depth = 0;
     let baselineCaptured = false;
@@ -332,10 +381,11 @@ export function computeMetrics(
             baselineCaptured = true;
         }
 
+        const leaves = tx.leafCount ?? 1;
         if (tx.type === 'deposit') {
-            depth += 1;
+            depth += leaves;
         } else {
-            depth = Math.max(0, depth - 1);
+            depth = Math.max(0, depth - leaves);
         }
 
         if (ts >= windowStartTs) {
@@ -347,8 +397,8 @@ export function computeMetrics(
         depthSamples.push(depth);
     }
 
-    const depositCosts = windowDeposits.map((tx) => tx.costCspr).filter((value) => value > 0);
-    const withdrawalCosts = windowWithdrawals.map((tx) => tx.costCspr).filter((value) => value > 0);
+    const depositCosts = windowDepositTxs.map((tx) => tx.costCspr).filter((value) => value > 0);
+    const withdrawalCosts = windowWithdrawalTxs.map((tx) => tx.costCspr).filter((value) => value > 0);
 
     const p50DepositCost = median(depositCosts);
     const p50WithdrawalCost = median(withdrawalCosts);
@@ -357,8 +407,8 @@ export function computeMetrics(
     return {
         totalDeposits,
         totalWithdrawals,
-        windowDeposits: windowDeposits.length,
-        windowWithdrawals: windowWithdrawals.length,
+        windowDeposits,
+        windowWithdrawals,
         uniqueDepositorCount60d: uniqueDepositorSet.size,
         deposits7d,
         poolDepthP50: median(depthSamples),
@@ -417,29 +467,47 @@ export function evaluateDecision(
     kpis: EconomicsKpis,
     previous: DecisionTracking | null,
     now: Date,
-    openBeta: boolean
+    openBeta: boolean,
+    sampleSize?: { windowDeposits: number; minWindowDeposits: number }
 ): { state: DecisionState; tracking: DecisionTracking } {
     const weekKey = toWeekKey(now);
     const alreadyEvaluatedThisWeek = previous?.last_evaluated_week === weekKey;
+
+    // Warmup gate: when the rolling window holds fewer deposits than the
+    // minimum sample threshold, the KPI verdict is noise. Hold counters in
+    // place (do not advance underperforming_weeks) and report
+    // INSUFFICIENT_DATA so the operator sees the trend without triggering a
+    // premature REVIEW_50.
+    const insufficient =
+        !!sampleSize && sampleSize.windowDeposits < sampleSize.minWindowDeposits;
+
     const isBalancedPass = kpis.pass_count >= 2;
 
     let underperformingWeeks = previous?.underperforming_weeks ?? 0;
     let balancedOpenBetaWeeks = previous?.balanced_open_beta_weeks ?? 0;
 
-    if (!alreadyEvaluatedThisWeek) {
+    if (!alreadyEvaluatedThisWeek && !insufficient) {
         underperformingWeeks = isBalancedPass ? 0 : underperformingWeeks + 1;
         if (openBeta) {
             balancedOpenBetaWeeks = isBalancedPass ? balancedOpenBetaWeeks + 1 : 0;
         } else {
             balancedOpenBetaWeeks = 0;
         }
+    } else if (!alreadyEvaluatedThisWeek && insufficient && !openBeta) {
+        // Outside of the open-beta freeze ramp we still reset the
+        // open-beta counter to keep its semantics tight.
+        balancedOpenBetaWeeks = 0;
     }
 
-    let state: DecisionState = 'KEEP_100';
-    if (openBeta && balancedOpenBetaWeeks >= 4) {
+    let state: DecisionState;
+    if (insufficient) {
+        state = 'INSUFFICIENT_DATA';
+    } else if (openBeta && balancedOpenBetaWeeks >= 4) {
         state = 'FREEZE_FOR_MAINNET';
     } else if (underperformingWeeks >= 3) {
         state = 'REVIEW_50';
+    } else {
+        state = 'KEEP_100';
     }
 
     return {
@@ -459,12 +527,23 @@ function readPreviousTracking(filePath: string): Promise<DecisionTracking | null
         .catch(() => null);
 }
 
-function buildNotes(state: DecisionState, openBeta: boolean): string[] {
+function buildNotes(
+    state: DecisionState,
+    openBeta: boolean,
+    sampleSize?: { windowDeposits: number; minWindowDeposits: number }
+): string[] {
     const notes: string[] = [
         'Decision model uses 60d balanced KPI profile from roadmap/whitepaper alignment.',
         'Single unified pool is preserved; no parallel denomination pools are recommended.'
     ];
 
+    if (state === 'INSUFFICIENT_DATA' && sampleSize) {
+        notes.push(
+            `Window holds ${sampleSize.windowDeposits} deposit(s); minimum sample is ${sampleSize.minWindowDeposits}. ` +
+            'KPI gates are reported but the KEEP/REVIEW/FREEZE verdict is suppressed until the window warms up. ' +
+            'This avoids tripping the 3-week REVIEW_50 rule on early-beta noise.'
+        );
+    }
     if (state === 'REVIEW_50') {
         notes.push('Trigger REVIEW_50 canary: run 14-day 50 CSPR testnet canary before any production denomination change.');
     }
@@ -486,11 +565,24 @@ export function buildEconomicsReport(
     const windowDays = options.windowDays ?? 60;
     const denominationCspr = options.denominationCspr ?? DENOMINATION_CSPR;
     const openBeta = options.openBeta ?? false;
+    const minWindowDeposits = options.minWindowDeposits ?? DEFAULT_MIN_WINDOW_DEPOSITS;
 
     const metrics = computeMetrics(transactions, now, windowDays, denominationCspr);
     const kpis = evaluateKpis(metrics);
-    const { state, tracking } = evaluateDecision(kpis, previousTracking, now, openBeta);
+    const sampleSize = {
+        windowDeposits: metrics.windowDeposits,
+        minWindowDeposits
+    };
+    const { state, tracking } = evaluateDecision(
+        kpis,
+        previousTracking,
+        now,
+        openBeta,
+        sampleSize
+    );
 
+    // Only recommend a denomination change when we actually had enough data
+    // to make a verdict. INSUFFICIENT_DATA must NOT push toward 50 CSPR.
     const recommendedDenomination = state === 'REVIEW_50' ? 50 : denominationCspr;
 
     return {
@@ -509,7 +601,7 @@ export function buildEconomicsReport(
         decision_state: state,
         recommended_denomination_cspr: recommendedDenomination,
         decision_tracking: tracking,
-        notes: buildNotes(state, openBeta)
+        notes: buildNotes(state, openBeta, sampleSize)
     };
 }
 
@@ -518,7 +610,8 @@ export async function economicsReportCommand(
     contractHash: string,
     outputPath: string,
     windowDays: number,
-    openBeta: boolean
+    openBeta: boolean,
+    minWindowDeposits: number = DEFAULT_MIN_WINDOW_DEPOSITS
 ) {
     console.log(`📊 Building economics report for ${DENOMINATION_LABEL}...`);
     const transactions = await fetchProtocolTransactions(nodeUrl, contractHash);
@@ -526,13 +619,17 @@ export async function economicsReportCommand(
     const report = buildEconomicsReport(transactions, previousTracking, {
         windowDays,
         denominationCspr: DENOMINATION_CSPR,
-        openBeta
+        openBeta,
+        minWindowDeposits
     });
 
     await fs.writeFile(outputPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
 
     console.log(`✅ Report saved: ${outputPath}`);
     console.log(`   Decision: ${report.decision_state}`);
+    if (report.decision_state === 'INSUFFICIENT_DATA') {
+        console.log(`   (window_deposits=${report.protocol_activity.window_deposits} < min ${minWindowDeposits}; KEEP/REVIEW/FREEZE suppressed)`);
+    }
     console.log(`   Recommended denomination: ${report.recommended_denomination_cspr} CSPR`);
     console.log(`   KPI pass count: ${report.kpis.pass_count}/3`);
 }

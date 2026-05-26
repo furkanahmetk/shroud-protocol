@@ -171,14 +171,9 @@ function normalizeExplorerResponse(kind: ExplorerPathKind, payload: any): any {
     return payload;
 }
 
-type DataSourceMode = 'hybrid' | 'cloud-only' | 'legacy-only';
-type DataSource = 'cloud' | 'legacy';
-
-function explorerSourcesByMode(mode: DataSourceMode): DataSource[] {
-    if (mode === 'legacy-only') return ['legacy'];
-    if (mode === 'cloud-only') return ['cloud'];
-    return ['cloud', 'legacy'];
-}
+// NOTE: Legacy explorer fallback was removed in Phase 1 of the mainnet roadmap.
+// The proxy is now cloud-only. `explorerSourcesByMode` / `DataSourceMode` no
+// longer exist; the tests for them have been removed.
 
 // ── Tests ───────────────────────────────────────────────────────────────
 
@@ -492,16 +487,8 @@ describe('normalizeExplorerResponse', () => {
 });
 
 describe('explorerSourcesByMode', () => {
-    it('hybrid returns cloud first, then legacy', () => {
-        expect(explorerSourcesByMode('hybrid')).toEqual(['cloud', 'legacy']);
-    });
-
-    it('cloud-only returns only cloud', () => {
-        expect(explorerSourcesByMode('cloud-only')).toEqual(['cloud']);
-    });
-
-    it('legacy-only returns only legacy', () => {
-        expect(explorerSourcesByMode('legacy-only')).toEqual(['legacy']);
+    it.skip('legacy-only mode no longer exists', () => {
+        // Removed in cloud-only migration.
     });
 });
 
@@ -538,8 +525,6 @@ describe('proxy handler (integration)', () => {
         // Set env BEFORE importing so the module picks them up
         process.env.CSPR_CLOUD_API_TOKEN = 'test-cloud-token-123';
         process.env.CSPR_CLOUD_REST_BASE_URL = 'https://api.testnet.cspr.cloud';
-        process.env.LEGACY_EXPLORER_API_URL = 'https://api.testnet.cspr.live';
-        process.env.CSPR_DATA_SOURCE_MODE = 'hybrid';
         process.env.CASPER_NODE_RPC_URL = 'https://node.testnet.casper.network/rpc';
 
         // Cache-bust any previous import
@@ -581,7 +566,7 @@ describe('proxy handler (integration)', () => {
         expect(res.body.message).toContain('not allowed');
     });
 
-    it('proxies explorer GET to cloud first, sets data-source header', async () => {
+    it('proxies explorer GET to cloud, sets data-source header', async () => {
         global.fetch = jest.fn().mockResolvedValueOnce({
             ok: true,
             status: 200,
@@ -596,7 +581,6 @@ describe('proxy handler (integration)', () => {
 
         expect(res.statusCode).toBe(200);
         expect(res.headers['x-shroud-data-source']).toBe('cloud');
-        expect(res.headers['x-shroud-fallback-used']).toBe('false');
         expect(res.body.data).toHaveLength(1);
 
         // Verify cloud auth header was sent (no Bearer prefix)
@@ -606,21 +590,12 @@ describe('proxy handler (integration)', () => {
         expect(headers?.Authorization).not.toMatch(/^bearer/i);
     });
 
-    it('falls back to legacy when cloud fails in hybrid mode', async () => {
-        // Use a DIFFERENT path to avoid cache hit from previous test
-        (global.fetch as any) = jest.fn()
-            // Cloud fails
-            .mockResolvedValueOnce({
-                ok: false,
-                status: 401,
-                text: async () => 'Unauthorized',
-            } as any)
-            // Legacy succeeds
-            .mockResolvedValueOnce({
-                ok: true,
-                status: 200,
-                json: async () => ({ data: [{ deploy_hash: 'legacy1', block_height: 5 }] }),
-            } as any);
+    it('returns upstream error directly when cloud fails (no fallback)', async () => {
+        (global.fetch as any) = jest.fn().mockResolvedValueOnce({
+            ok: false,
+            status: 401,
+            text: async () => 'Unauthorized',
+        } as any);
 
         const req = mockReq({
             query: { useExplorer: 'true', path: '/purse-urefs/uref-different-purse-007/transfers' },
@@ -628,9 +603,10 @@ describe('proxy handler (integration)', () => {
         const res = mockRes();
         await handler(req, res);
 
-        expect(res.statusCode).toBe(200);
-        expect(res.headers['x-shroud-data-source']).toBe('legacy');
-        expect(res.headers['x-shroud-fallback-used']).toBe('true');
+        expect(res.statusCode).toBe(401);
+        expect(res.body.error).toContain('Cloud target error');
+        // Only one upstream call — no legacy fallback
+        expect((global.fetch as jest.Mock).mock.calls.length).toBe(1);
     });
 
     it('proxies RPC POST to node when useExplorer is not set', async () => {
@@ -671,11 +647,7 @@ describe('proxy handler (integration)', () => {
     });
 
     it('handles network errors in explorer proxy', async () => {
-        global.fetch = jest.fn()
-            // Cloud network error → hybrid mode falls back
-            .mockRejectedValueOnce(new Error('ECONNREFUSED'))
-            // Legacy also fails → returns Target error (legacy is not a fallback source)
-            .mockRejectedValueOnce(new Error('ECONNREFUSED'));
+        global.fetch = jest.fn().mockRejectedValueOnce(new Error('ECONNREFUSED'));
 
         const req = mockReq({
             query: { useExplorer: 'true', path: '/deploys/abc123' },
@@ -683,36 +655,15 @@ describe('proxy handler (integration)', () => {
         const res = mockRes();
         await handler(req, res);
 
-        // Legacy is the final source in hybrid mode; when it fails the handler
-        // returns "Target error" (not "unavailable") because legacy is not a
-        // fallback source — only cloud → legacy is the fallback path.
+        // Cloud-only: a network error returns 502 (network errors yield status 0,
+        // which the handler maps to 502).
         expect(res.statusCode).toBe(502);
-        expect(res.body.error).toContain('Target error');
-        expect(res.body.source).toBe('legacy');
+        expect(res.body.error).toContain('Cloud target error');
     });
 
-    it('does NOT send Authorization header for legacy source', async () => {
-        // Cloud fails → falls back to legacy
-        (global.fetch as any) = jest.fn()
-            .mockResolvedValueOnce({
-                ok: false,
-                status: 500,
-                text: async () => 'Internal error',
-            } as any)
-            .mockResolvedValueOnce({
-                ok: true,
-                status: 200,
-                json: async () => ({ data: { hash: 'dep1', status: 'processed' } }),
-            } as any);
-
-        const req = mockReq({
-            query: { useExplorer: 'true', path: '/deploys/abc123' },
-        });
-        const res = mockRes();
-        await handler(req, res);
-
-        // Second call is legacy — should NOT have Authorization header
-        const legacyCall = (global.fetch as jest.Mock).mock.calls[1];
-        expect(legacyCall[1]?.headers?.Authorization).toBeUndefined();
-    });
+    // Live integration test for missing-token rejection lives at the curl level
+    // (see CHANGELOG "Deprecate Legacy Explorer Fallback"). Asserting it here
+    // would require resetting Jest's ESM module cache between assertions, which
+    // ts-jest doesn't expose cleanly. Manual verification with .env token blank:
+    //   curl /api/proxy?useExplorer=true&path=/deploys/abc → 500 Misconfiguration.
 });
