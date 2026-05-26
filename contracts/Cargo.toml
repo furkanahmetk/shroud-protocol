@@ -14,7 +14,7 @@ odra = { version = "2.5.0" }
 
 casper-types = { version = "6.1.0", default-features = false }
 hex = { version = "0.4", default-features = false, features = ["alloc"] }
-base64ct = { version = "=1.6.0", default-features = false }
+base64ct = { version = "=1.8.3", default-features = false }
 casper-event-standard = { version = "0.7.0", default-features = false }
 ark-bn254 = { version = "0.4.0", default-features = false, features = ["curve"] }
 ark-ff = { version = "0.4.0", default-features = false }
