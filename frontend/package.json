@@ -19,7 +19,7 @@
         "lucide-react": "^0.263.1",
         "next": "16.2.6",
         "react": "18.2.0",
-        "react-dom": "18.2.0",
+        "react-dom": "19.2.6",
         "snarkjs": "^0.7.0",
         "tailwind-merge": "^3.4.0"
     },
@@ -27,7 +27,7 @@
         "@types/jest": "^30.0.0",
         "@types/node": "20.5.9",
         "@types/react": "18.2.21",
-        "@types/react-dom": "18.2.7",
+        "@types/react-dom": "19.2.3",
         "autoprefixer": "10.4.15",
         "jest": "^30.2.0",
         "postcss": "^8.5.10",
