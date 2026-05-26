@@ -1,0 +1,108 @@
+# Dependabot keeps the JS + Rust + GitHub Actions dependency trees fresh
+# without us having to remember. Combined with `npm audit` / `cargo audit`
+# this is the cheapest safety net before the Phase 3 security audit (#12).
+
+version: 2
+updates:
+  # ─── Frontend (Next.js, casper-js-sdk v5, snarkjs, …) ─────────────────────
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Istanbul"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "frontend"
+    commit-message:
+      prefix: "deps(frontend)"
+    groups:
+      next-runtime:
+        patterns:
+          - "next"
+          - "react"
+          - "react-dom"
+          - "@types/react*"
+        update-types:
+          - "minor"
+          - "patch"
+      tailwind:
+        patterns:
+          - "tailwindcss"
+          - "postcss"
+          - "autoprefixer"
+          - "tailwind-merge"
+      lint-and-build:
+        patterns:
+          - "typescript"
+          - "ts-jest"
+          - "jest"
+          - "@types/*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # ─── CLI (casper-js-sdk v2 — pinned to a major; only patch updates) ───────
+  - package-ecosystem: "npm"
+    directory: "/cli"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Istanbul"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "cli"
+    commit-message:
+      prefix: "deps(cli)"
+    ignore:
+      # casper-js-sdk v2→v5 is a breaking refactor (different API surface
+      # used in cli/src/blockchain.ts). Hold v2 until we explicitly migrate.
+      - dependency-name: "casper-js-sdk"
+        update-types:
+          - "version-update:semver-major"
+
+  # ─── Contracts (Rust + Odra + ark-* ZK stack) ─────────────────────────────
+  - package-ecosystem: "cargo"
+    directory: "/contracts"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Istanbul"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "contracts"
+    commit-message:
+      prefix: "deps(contracts)"
+    ignore:
+      # The ark-* stack and odra are tightly coupled. Manual coordinated bump
+      # only — auto-bumping one can break verifier pairing math.
+      - dependency-name: "ark-*"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "odra*"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "casper-*"
+        update-types:
+          - "version-update:semver-major"
+
+  # ─── GitHub Actions ──────────────────────────────────────────────────────
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Istanbul"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "deps(ci)"
