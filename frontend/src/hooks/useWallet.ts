@@ -195,7 +195,14 @@ export const useWallet = () => {
             if (transaction instanceof Transaction) {
                 deployJson = transaction.toJSON();
             } else {
-                deployJson = Deploy.toJSON(transaction) as any;
+                // Casper Wallet expects the legacy v1 Deploy JSON layout
+                // (args as `[name, clvalue]` tuples). SDK v5's `Deploy.toJSON()`
+                // emits v5 structure which the wallet validator rejects with
+                // "arg not valid, got:undefined". `deployToLegacyJson` is the
+                // existing in-repo helper that emits the format the wallet
+                // already accepts via the RPC submit path.
+                const { deployToLegacyJson } = await import('../utils/casper');
+                deployJson = deployToLegacyJson(transaction);
 
                 // HACK: Ensure version is null for StoredVersionedContractByHash if missing
                 if (deployJson.session?.StoredVersionedContractByHash &&
@@ -204,6 +211,8 @@ export const useWallet = () => {
                     deployJson.session.StoredVersionedContractByHash.version = null;
                 }
             }
+
+            console.log('[useWallet] deployJson preview:', JSON.stringify(deployJson).slice(0, 400));
 
             console.log("Requesting cspr.click signature...");
 

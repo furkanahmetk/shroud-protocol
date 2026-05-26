@@ -248,7 +248,8 @@ async function fetchTransfers(mainPurse: string, maxPages = 200): Promise<Deposi
         const data = Array.isArray(response?.data) ? response.data : [];
         if (data.length === 0) break;
         transfers.push(...data);
-        hasMore = data.length === 100;
+        // Page until empty (see fix in blockchain.ts getDeposits).
+        hasMore = data.length > 0;
         page += 1;
     }
 

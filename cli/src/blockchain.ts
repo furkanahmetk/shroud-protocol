@@ -343,7 +343,10 @@ export class BlockchainClient {
                 const response = await this.explorerCall(`/purses/${mainPurse}/transfers?page_size=100&page=${page}`);
                 const data = response.data || [];
                 allTransfers = [...allTransfers, ...data];
-                hasMore = data.length === 100;
+                // Page until empty: legacy explorer (and cspr.cloud) sometimes
+                // return fewer than the requested page_size; assuming a short
+                // response means "done" silently dropped the oldest deposits.
+                hasMore = data.length > 0;
                 page++;
             }
 

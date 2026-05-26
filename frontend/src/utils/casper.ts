@@ -411,7 +411,11 @@ export const fetchProtocolActivity = async (contractHash: string, minTimestamp: 
             if (newTransfers.length < data.length) {
                 hasMore = false;
             } else {
-                hasMore = data.length === 100; // standard pagination check
+                // cspr.cloud may paginate at smaller chunks than the requested
+                // limit. Keep paging until the response is empty rather than
+                // assuming a 100-item page is always full — otherwise the oldest
+                // deposit silently drops out and the Merkle root never matches.
+                hasMore = data.length > 0;
             }
 
             page++;
@@ -444,12 +448,22 @@ export const fetchProtocolActivity = async (contractHash: string, minTimestamp: 
                 const args = data?.args || data?.session?.args || data?.session?.StoredContractByHash?.args;
 
                 if (args) {
-                    // Identify Deposit
+                    // Identify Deposit (single)
                     const commitmentValue = args.commitment?.parsed ||
                         (Array.isArray(args) ? args.find((a: any) => a.name === 'commitment' || a[0] === 'commitment')?.parsed : null);
 
                     if (commitmentValue) {
                         commitments.push(commitmentValue.toString());
+                        continue;
+                    }
+
+                    // Identify Deposit (batch — `commitments` plural carries N leaves)
+                    const batchCommitments = args.commitments?.parsed ||
+                        (Array.isArray(args) ? args.find((a: any) => a.name === 'commitments' || a[0] === 'commitments')?.parsed : null);
+                    if (Array.isArray(batchCommitments)) {
+                        for (const c of batchCommitments) {
+                            if (c !== undefined && c !== null) commitments.push(c.toString());
+                        }
                         continue;
                     }
 
@@ -589,7 +603,8 @@ export const fetchQuickStats = async (contractHash: string): Promise<{ totalTran
                 }
             }
             totalCount += data.length;
-            hasMore = data.length === 100;
+            // Page until empty — see fetchProtocolActivityOptimized for context.
+            hasMore = data.length > 0;
             page++;
         }
 
@@ -693,9 +708,14 @@ export const fetchProtocolActivityOptimized = async (
             });
 
             if (newTransfers.length < data.length) {
+                // Hit an older-than-minTimestamp transfer; no need to fetch older pages
                 hasMore = false;
             } else {
-                hasMore = data.length === 100;
+                // Otherwise keep paging until we get an empty response. cspr.cloud
+                // sometimes paginates at smaller chunks than the requested limit,
+                // so `data.length === 100` was a wrong stop condition that silently
+                // dropped the oldest deposits (and broke Merkle root reconstruction).
+                hasMore = data.length > 0;
             }
 
             page++;
@@ -788,9 +808,13 @@ export const fetchProtocolActivityOptimized = async (
             const args = data?.args || data?.session?.args || data?.session?.StoredContractByHash?.args;
 
             if (args) {
-                // Identify Deposit
+                // Identify Deposit (single)
                 const commitmentValue = args.commitment?.parsed ||
                     (Array.isArray(args) ? args.find((a: any) => a.name === 'commitment' || a[0] === 'commitment')?.parsed : null);
+
+                // Identify Deposit (batch — `commitments` plural)
+                const batchCommitments = args.commitments?.parsed ||
+                    (Array.isArray(args) ? args.find((a: any) => a.name === 'commitments' || a[0] === 'commitments')?.parsed : null);
 
                 if (commitmentValue) {
                     // IMPORTANT: Handle potential precision loss for large numbers
@@ -815,12 +839,18 @@ export const fetchProtocolActivityOptimized = async (
                         commitmentStr = commitmentValue.toString();
                     }
                     commitments.push(commitmentStr);
+                } else if (Array.isArray(batchCommitments)) {
+                    // batch deposit — push every leaf, in the original order
+                    for (const c of batchCommitments) {
+                        if (c === undefined || c === null) continue;
+                        commitments.push(c.toString());
+                    }
                 } else {
                     // Identify Withdrawal
                     const nullifierValue = args.nullifier_hash?.parsed ||
                         (Array.isArray(args) ? args.find((a: any) => a.name === 'nullifier_hash' || a[0] === 'nullifier_hash')?.parsed : null);
 
-                    if (nullifierValue || data?.entry_point === 'withdraw' || data?.session?.StoredVersionedContractByHash?.entry_point === 'withdraw') {
+                    if (nullifierValue || data?.entry_point === 'withdraw' || data?.session?.StoredVersionedContractByHash?.entry_point === 'withdraw' || data?.entry_point === 'withdraw_batch') {
                         withdrawalsByHash.set(hash, {
                             hash: hash,
                             timestamp: data.timestamp,

@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode, useRe
 import { CONTRACT_HASH, fetchProtocolActivity, fetchProtocolActivityOptimized, SyncProgressCallback } from '../utils/casper';
 import { CryptoUtils } from '../utils/crypto';
 import { SigningLock } from '../utils/signingLock';
-import { loadFromStorage, saveToStorage } from '../utils/storage';
+import { loadFromStorage, saveToStorage, clearStorage } from '../utils/storage';
 import { SyncProgress, SyncPhase, SyncError } from '../utils/syncProgress';
 
 // Feature flag for optimized sync (can be overridden via env)
@@ -246,7 +246,20 @@ export function CommitmentProvider({ children }: { children: ReactNode }) {
     };
 
     const forceSync = async () => {
-        await sync(false);
+        // Hard reset: wipe the local cache and re-sync from genesis. Needed
+        // when the on-chain history contains tx kinds the previous client
+        // version didn't index (e.g. batch deposits) — incremental sync would
+        // skip those because they're "older than lastSyncTimestamp".
+        console.log('[CommitmentContext] Force sync — clearing local cache and re-syncing from 0');
+        try {
+            clearStorage(CONTRACT_HASH);
+        } catch (e) {
+            console.warn('[CommitmentContext] clearStorage failed:', e);
+        }
+        setCommitments([]);
+        setLastProcessedTimestamp(0);
+        lastProcessedTimestampRef.current = 0;
+        await sync(false, 0, []);
     };
 
     const cancelSync = useCallback(() => {
