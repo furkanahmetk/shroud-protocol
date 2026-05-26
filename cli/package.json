@@ -12,7 +12,7 @@
     "casper-js-sdk": "^2.13.3",
     "circomlib": "^2.0.5",
     "circomlibjs": "^0.1.7",
-    "commander": "^11.0.0",
+    "commander": "^14.0.3",
     "snarkjs": "^0.7.0"
   },
   "devDependencies": {
